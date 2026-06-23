@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScanShip — Style Reference</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* ===== DESIGN TOKENS ===== */
+        :root {
+            --navy:       #1C3D5A;
+            --navy-dark:  #152E45;
+            --navy-light: #2A5278;
+            --white:      #FFFFFF;
+            --gray-50:    #F8F9FA;
+            --gray-100:   #F1F3F5;
+            --gray-200:   #DEE2E6;
+            --gray-300:   #CED4DA;
+            --gray-400:   #ADB5BD;
+            --gray-500:   #868E96;
+            --gray-700:   #495057;
+            --gray-900:   #212529;
+            --green:      #2E9E5E;
+            --green-bg:   #EBF8F1;
+            --red:        #DC3545;
+            --red-bg:     #FFF0F0;
+        }
+
+        /* ===== PAGE SHELL (style guide layout) ===== */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #eef0f3;
+            color: var(--gray-900);
+            padding: 40px 24px 80px;
+            -webkit-text-size-adjust: 100%;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--gray-900);
+            margin-bottom: 4px;
+            letter-spacing: -0.5px;
+        }
+        .page-sub {
+            font-size: 14px;
+            color: var(--gray-500);
+            margin-bottom: 48px;
+        }
+
+        .section {
+            margin-bottom: 56px;
+        }
+        .section-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--gray-500);
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--gray-200);
+            padding-bottom: 8px;
+        }
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: flex-start;
+        }
+
+        /* Card wrapper for each preview */
+        .card {
+            background: var(--white);
+            border-radius: 16px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+        .card-pad { padding: 24px; }
+        .card-label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--gray-400);
+            margin-bottom: 12px;
+        }
+
+        /* ===== COMPONENT STYLES (exact copy from app) ===== */
+
+        /* --- HEADER --- */
+        .header {
+            background: var(--navy);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 56px;
+            height: 56px;
+        }
+        .header-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .header-icon svg {
+            width: 26px; height: 26px;
+            stroke: var(--white); fill: none;
+            stroke-width: 1.5;
+            stroke-linecap: round; stroke-linejoin: round;
+        }
+        .header-logo { display: flex; align-items: center; }
+        .header-logo-text {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--white);
+            letter-spacing: -0.3px;
+        }
+
+        /* --- SEARCH ROW --- */
+        .search-section {
+            padding: 20px 16px 14px;
+            text-align: center;
+        }
+        .search-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--gray-900);
+            margin-bottom: 3px;
+        }
+        .search-subtitle {
+            font-size: 12px;
+            color: var(--gray-500);
+            margin-bottom: 16px;
+        }
+        .search-row {
+            display: flex;
+            border: 2px solid var(--gray-300);
+            border-radius: 10px;
+            overflow: hidden;
+            background: var(--white);
+        }
+        .search-row.focused { border-color: var(--navy); }
+        .search-input {
+            flex: 1;
+            min-width: 0;
+            padding: 0 14px;
+            height: 48px;
+            border: none;
+            font-size: 16px;
+            font-family: inherit;
+            font-weight: 500;
+            outline: none;
+            background: transparent;
+            color: var(--gray-900);
+        }
+        .search-input::placeholder { color: var(--gray-400); font-weight: 400; }
+        .btn-search {
+            width: 52px;
+            height: 48px;
+            background: var(--navy);
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .btn-search svg {
+            width: 20px; height: 20px;
+            stroke: var(--white); fill: none;
+            stroke-width: 2;
+            stroke-linecap: round; stroke-linejoin: round;
+        }
+
+        /* --- EMPTY STATE --- */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 32px 20px;
+        }
+        .empty-icon { margin-bottom: 14px; }
+        .empty-icon svg {
+            width: 56px; height: 56px;
+            stroke: var(--gray-300); fill: none;
+            stroke-width: 1;
+            stroke-linecap: round; stroke-linejoin: round;
+        }
+        .empty-text {
+            font-size: 13px;
+            color: var(--gray-400);
+            text-align: center;
+            line-height: 1.6;
+        }
+
+        /* --- ORDER CARD --- */
+        .order-card {
+            background: var(--navy);
+            border-radius: 12px;
+            padding: 12px 14px;
+            margin-bottom: 12px;
+        }
+        .order-card-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .order-number {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--white);
+            letter-spacing: -0.2px;
+        }
+        .order-arrow {
+            width: 44px; height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            margin: -8px -8px -8px 0;
+            border-radius: 8px;
+        }
+        .order-arrow svg {
+            width: 18px; height: 18px;
+            stroke: var(--white); fill: none;
+            stroke-width: 2;
+            stroke-linecap: round; stroke-linejoin: round;
+        }
+        .order-scan-input {
+            width: 100%;
+            padding: 0 14px;
+            height: 44px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: inherit;
+            font-weight: 500;
+            outline: none;
+            background: var(--white);
+            color: var(--gray-900);
+        }
+        .order-scan-input::placeholder { color: var(--gray-400); font-weight: 400; }
+
+        /* --- ITEMS LIST --- */
+        .items-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .items-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--gray-700);
+        }
+        .items-counter {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--gray-500);
+        }
+        .item-row {
+            background: var(--white);
+            border: 1.5px solid var(--gray-200);
+            border-radius: 10px;
+            padding: 11px 14px;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 52px;
+        }
+        .item-row.scanned {
+            border-color: var(--navy);
+            background: var(--gray-50);
+        }
+        .item-info { flex: 1; min-width: 0; }
+        .item-sku {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--gray-900);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .item-sub {
+            font-size: 11px;
+            color: var(--gray-400);
+            margin-top: 2px;
+        }
+        .item-check {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            border: 2px solid var(--gray-300);
+            flex-shrink: 0;
+            margin-left: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .item-row.scanned .item-check {
+            background: var(--navy);
+            border-color: var(--navy);
+        }
+        .item-check svg {
+            width: 14px; height: 14px;
+            stroke: var(--white); fill: none;
+            stroke-width: 3;
+            stroke-linecap: round; stroke-linejoin: round;
+            opacity: 0;
+        }
+        .item-row.scanned .item-check svg { opacity: 1; }
+
+        /* --- SKELETON --- */
+        .skel-bar {
+            height: 12px;
+            border-radius: 6px;
+            background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-200) 50%, var(--gray-100) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.2s infinite;
+        }
+        .skel-bar.short { width: 60%; }
+        @keyframes shimmer { to { background-position: -200% 0; } }
+
+        /* --- COMPLETION SCREEN --- */
+        .completed-screen {
+            background: var(--navy);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 40px 24px;
+            border-radius: 16px;
+        }
+        .completed-circle {
+            width: 110px; height: 110px;
+            background: rgba(255,255,255,0.12);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+        .completed-circle-inner {
+            width: 80px; height: 80px;
+            background: var(--white);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .completed-circle-inner svg {
+            width: 40px; height: 40px;
+            stroke: var(--navy); fill: none;
+            stroke-width: 2.5;
+            stroke-linecap: round; stroke-linejoin: round;
+        }
+        .completed-title {
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--white);
+            margin-bottom: 8px;
+            letter-spacing: -0.3px;
+        }
+        .completed-order {
+            font-size: 16px;
+            color: rgba(255,255,255,0.6);
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        /* --- TOAST --- */
+        .toast {
+            display: inline-flex;
+            padding: 12px 22px;
+            border-radius: 10px;
+            color: var(--white);
+            font-weight: 600;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        .toast-success { background: var(--green); }
+        .toast-error   { background: var(--red); }
+
+        /* --- BADGES --- */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            font-family: inherit;
+        }
+        .badge-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+        .badge-scanned { background: var(--green-bg); color: var(--green); }
+        .badge-scanned .badge-dot { background: var(--green); }
+        .badge-pending { background: var(--gray-100); color: var(--gray-500); }
+        .badge-pending .badge-dot { background: var(--gray-400); }
+
+        /* --- TABLE (log page) --- */
+        .table-wrap {
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid var(--gray-200);
+        }
+        table {
+            width: 100%;
+            min-width: 580px;
+            border-collapse: collapse;
+            font-size: 12px;
+            font-family: inherit;
+        }
+        thead tr { background: var(--navy); }
+        thead th {
+            padding: 10px 12px;
+            text-align: left;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: rgba(255,255,255,0.85);
+            white-space: nowrap;
+            user-select: none;
+        }
+        .sort-arrow { display: inline-block; margin-left: 3px; opacity: 0.35; font-size: 9px; }
+        thead th.sort-asc  .sort-arrow { opacity: 1; }
+        tbody tr { border-bottom: 1px solid var(--gray-100); }
+        tbody tr:last-child { border-bottom: none; }
+        tbody tr:hover { background: var(--gray-50); }
+        tbody td {
+            padding: 9px 12px;
+            color: var(--gray-900);
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+        tbody td.dim { color: var(--gray-500); }
+
+        /* --- PAGINATION BUTTONS --- */
+        .pg-btn {
+            height: 36px;
+            padding: 0 14px;
+            border: 1.5px solid var(--gray-200);
+            border-radius: 8px;
+            background: var(--white);
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            color: var(--gray-700);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .pg-btn:disabled { opacity: 0.35; cursor: default; }
+        .pg-btn svg {
+            width: 14px; height: 14px;
+            stroke: currentColor; fill: none;
+            stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+        }
+        .pg-info {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--gray-500);
+            padding: 0 4px;
+        }
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 16px;
+        }
+
+        /* --- APP FRAME PREVIEW --- */
+        .app-frame-preview {
+            width: 360px;
+            height: 640px;
+            background: var(--white);
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.22);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+        .app-body-preview {
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            padding: 0 14px 14px;
+        }
+        .items-scroll {
+            overflow-y: auto;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* --- COLOR SWATCHES --- */
+        .swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+        .swatch {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+        .swatch-box {
+            width: 56px; height: 56px;
+            border-radius: 10px;
+            border: 1px solid rgba(0,0,0,0.08);
+        }
+        .swatch-name {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--gray-500);
+            text-align: center;
+        }
+        .swatch-hex {
+            font-size: 9px;
+            color: var(--gray-400);
+        }
+
+        /* --- TYPOGRAPHY SAMPLES --- */
+        .type-sample + .type-sample { margin-top: 12px; }
+        .type-meta {
+            font-size: 10px;
+            color: var(--gray-400);
+            margin-bottom: 2px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="page-title">ScanShip — Visual Style Reference</div>
+<div class="page-sub">HTML + CSS design system. No functionality — use as a template reference.</div>
+
+
+<!-- ===== SECTION: APP FRAME ===== -->
+<div class="section">
+    <div class="section-label">App Frame — Mobile (360×640) and Desktop Card</div>
+    <div class="row">
+
+        <!-- SCREEN 1: Empty State -->
+        <div>
+            <div class="card-label">Screen 1 · Empty State</div>
+            <div class="app-frame-preview">
+                <div class="header">
+                    <div class="header-icon">
+                        <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                    </div>
+                    <div class="header-logo">
+                        <span class="header-logo-text">SWCorp</span>
+                    </div>
+                    <div class="header-icon">
+                        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/></svg>
+                    </div>
+                </div>
+                <div class="search-section">
+                    <div class="search-title">Search Order</div>
+                    <div class="search-subtitle">Enter Order Nbr.</div>
+                    <div class="search-row">
+                        <input type="text" class="search-input" placeholder="e.g. SO-10042" readonly>
+                        <button class="btn-search">
+                            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div style="flex:1;display:flex;align-items:center;justify-content:center;">
+                    <div class="empty-state">
+                        <div class="empty-icon">
+                            <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                        </div>
+                        <div class="empty-text">Search for an order<br>to start scanning.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCREEN 2: Order Loaded -->
+        <div>
+            <div class="card-label">Screen 2 · Order Loaded (items list)</div>
+            <div class="app-frame-preview">
+                <div class="header">
+                    <div class="header-icon">
+                        <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                    </div>
+                    <div class="header-logo"><span class="header-logo-text">SWCorp</span></div>
+                    <div class="header-icon">
+                        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/></svg>
+                    </div>
+                </div>
+                <div class="search-section" style="padding-bottom:0;">
+                    <div class="search-row">
+                        <input type="text" class="search-input" value="SO-10042" readonly>
+                        <button class="btn-search">
+                            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="app-body-preview">
+                    <div style="margin-top:12px;">
+                        <div class="order-card">
+                            <div class="order-card-top">
+                                <div class="order-number">SO-10042 · Shipment 3</div>
+                                <div class="order-arrow">
+                                    <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                                </div>
+                            </div>
+                            <input type="text" class="order-scan-input" placeholder="Scan item barcode..." readonly>
+                        </div>
+                    </div>
+                    <div class="items-header">
+                        <div class="items-label">Items</div>
+                        <div class="items-counter">2/4 Done</div>
+                    </div>
+                    <div class="items-scroll">
+                        <div class="item-row scanned">
+                            <div class="item-info">
+                                <div class="item-sku">SKU-00841</div>
+                                <div class="item-sub">Qty: 1 · Box A</div>
+                            </div>
+                            <div class="item-check">
+                                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                            </div>
+                        </div>
+                        <div class="item-row scanned">
+                            <div class="item-info">
+                                <div class="item-sku">SKU-00219</div>
+                                <div class="item-sub">Qty: 2 · Box A</div>
+                            </div>
+                            <div class="item-check">
+                                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                            </div>
+                        </div>
+                        <div class="item-row">
+                            <div class="item-info">
+                                <div class="item-sku">SKU-00554-LG</div>
+                                <div class="item-sub">Qty: 1 · Box B</div>
+                            </div>
+                            <div class="item-check">
+                                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                            </div>
+                        </div>
+                        <div class="item-row">
+                            <div class="item-info">
+                                <div class="item-sku">SKU-00102-BLK</div>
+                                <div class="item-sub">Qty: 1 · Box B</div>
+                            </div>
+                            <div class="item-check">
+                                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCREEN 3: Completed -->
+        <div>
+            <div class="card-label">Screen 3 · Order Completed overlay</div>
+            <div class="app-frame-preview" style="background:var(--navy);">
+                <div class="completed-screen" style="flex:1;border-radius:0;">
+                    <div class="completed-circle">
+                        <div class="completed-circle-inner">
+                            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                        </div>
+                    </div>
+                    <div class="completed-title">Order Completed</div>
+                    <div class="completed-order">SO-10042</div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /row -->
+</div>
+
+
+<!-- ===== SECTION: LOG PAGE ===== -->
+<div class="section">
+    <div class="section-label">Log Page — Toolbar + Table</div>
+    <div class="card card-pad">
+
+        <!-- Toolbar -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;">
+            <div>
+                <div style="font-size:18px;font-weight:700;color:var(--gray-900);">Scan Log</div>
+                <div style="font-size:11px;color:var(--gray-500);margin-top:2px;">History · AcuSoShipScanLog</div>
+            </div>
+            <div class="search-row" style="max-width:280px;">
+                <input type="text" class="search-input" style="height:44px;" placeholder="Order, Shipment or SKU…" readonly>
+                <button class="btn-search" style="height:44px;width:46px;">
+                    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Results bar -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;margin-bottom:4px;">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--gray-700);">Results</div>
+            <div style="font-size:11px;font-weight:600;color:var(--gray-500);">3 records</div>
+        </div>
+
+        <!-- Table -->
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="sort-asc">Date <span class="sort-arrow">↑</span></th>
+                        <th>Order <span class="sort-arrow">↕</span></th>
+                        <th>Shipment <span class="sort-arrow">↕</span></th>
+                        <th>SKU <span class="sort-arrow">↕</span></th>
+                        <th>Qty <span class="sort-arrow">↕</span></th>
+                        <th>Status <span class="sort-arrow">↕</span></th>
+                        <th>User <span class="sort-arrow">↕</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="dim">2026-06-19 09:14</td>
+                        <td>SO-10042</td>
+                        <td>Shipment 3</td>
+                        <td>SKU-00841</td>
+                        <td>1</td>
+                        <td><span class="badge badge-scanned"><span class="badge-dot"></span>Scanned</span></td>
+                        <td class="dim">jsmith</td>
+                    </tr>
+                    <tr>
+                        <td class="dim">2026-06-19 09:12</td>
+                        <td>SO-10042</td>
+                        <td>Shipment 3</td>
+                        <td>SKU-00219</td>
+                        <td>2</td>
+                        <td><span class="badge badge-scanned"><span class="badge-dot"></span>Scanned</span></td>
+                        <td class="dim">jsmith</td>
+                    </tr>
+                    <tr>
+                        <td class="dim">2026-06-18 14:03</td>
+                        <td>SO-10039</td>
+                        <td>Shipment 1</td>
+                        <td>SKU-00102-BLK</td>
+                        <td>1</td>
+                        <td><span class="badge badge-pending"><span class="badge-dot"></span>Pending</span></td>
+                        <td class="dim">mlopez</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination">
+            <button class="pg-btn" disabled>
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+                Prev
+            </button>
+            <span class="pg-info">Page 1 of 4</span>
+            <button class="pg-btn">
+                Next
+                <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+        </div>
+
+    </div>
+</div>
+
+
+<!-- ===== SECTION: INDIVIDUAL COMPONENTS ===== -->
+<div class="section">
+    <div class="section-label">Components — Isolated</div>
+    <div class="row">
+
+        <!-- Header -->
+        <div style="flex:1;min-width:300px;">
+            <div class="card-label">Header Bar (navy, 56px)</div>
+            <div class="card" style="overflow:hidden;">
+                <div class="header">
+                    <div class="header-icon">
+                        <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                    </div>
+                    <div class="header-logo"><span class="header-logo-text">SWCorp</span></div>
+                    <div class="header-icon">
+                        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/></svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search inputs -->
+        <div style="flex:1;min-width:280px;">
+            <div class="card-label">Search Row — Default / Focused</div>
+            <div class="card card-pad" style="display:flex;flex-direction:column;gap:12px;">
+                <div class="search-row">
+                    <input type="text" class="search-input" placeholder="Enter Order Nbr." readonly>
+                    <button class="btn-search">
+                        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    </button>
+                </div>
+                <div class="search-row focused">
+                    <input type="text" class="search-input" value="SO-10042" readonly>
+                    <button class="btn-search">
+                        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="row" style="margin-top:16px;">
+
+        <!-- Item rows -->
+        <div style="flex:1;min-width:280px;">
+            <div class="card-label">Item Rows — Pending / Scanned</div>
+            <div class="card card-pad">
+                <div class="item-row" style="margin-bottom:6px;">
+                    <div class="item-info">
+                        <div class="item-sku">SKU-00554-LG</div>
+                        <div class="item-sub">Qty: 1 · Box B</div>
+                    </div>
+                    <div class="item-check">
+                        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                    </div>
+                </div>
+                <div class="item-row scanned">
+                    <div class="item-info">
+                        <div class="item-sku">SKU-00841</div>
+                        <div class="item-sub">Qty: 1 · Box A</div>
+                    </div>
+                    <div class="item-check">
+                        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Skeleton -->
+        <div style="flex:1;min-width:280px;">
+            <div class="card-label">Skeleton Shimmer (loading state)</div>
+            <div class="card card-pad">
+                <div class="item-row" style="flex-direction:column;align-items:flex-start;gap:8px;">
+                    <div class="skel-bar" style="width:55%;"></div>
+                    <div class="skel-bar short"></div>
+                </div>
+                <div class="item-row" style="flex-direction:column;align-items:flex-start;gap:8px;margin-top:6px;">
+                    <div class="skel-bar" style="width:70%;"></div>
+                    <div class="skel-bar short"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Order Card -->
+        <div style="flex:1;min-width:280px;">
+            <div class="card-label">Order Card (navy bg)</div>
+            <div class="card" style="background:var(--gray-100);padding:16px;">
+                <div class="order-card">
+                    <div class="order-card-top">
+                        <div class="order-number">SO-10042 · Shipment 3</div>
+                        <div class="order-arrow">
+                            <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                        </div>
+                    </div>
+                    <input type="text" class="order-scan-input" placeholder="Scan item barcode..." readonly>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="row" style="margin-top:16px;">
+
+        <!-- Badges -->
+        <div>
+            <div class="card-label">Status Badges</div>
+            <div class="card card-pad" style="display:flex;gap:10px;align-items:center;">
+                <span class="badge badge-scanned"><span class="badge-dot"></span>Scanned</span>
+                <span class="badge badge-pending"><span class="badge-dot"></span>Pending</span>
+            </div>
+        </div>
+
+        <!-- Toasts -->
+        <div>
+            <div class="card-label">Toast Notifications</div>
+            <div class="card card-pad" style="display:flex;gap:10px;flex-wrap:wrap;">
+                <div class="toast toast-success">Item scanned successfully</div>
+                <div class="toast toast-error">Item not found in order</div>
+            </div>
+        </div>
+
+        <!-- Pagination btns -->
+        <div>
+            <div class="card-label">Pagination</div>
+            <div class="card card-pad">
+                <div class="pagination" style="padding:0;">
+                    <button class="pg-btn" disabled>
+                        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+                        Prev
+                    </button>
+                    <span class="pg-info">Page 2 of 8</span>
+                    <button class="pg-btn">
+                        Next
+                        <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Empty state -->
+        <div>
+            <div class="card-label">Empty State</div>
+            <div class="card card-pad">
+                <div class="empty-state" style="padding:16px 20px;">
+                    <svg viewBox="0 0 24 24" style="width:44px;height:44px;stroke:var(--gray-300);fill:none;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;margin:0 auto 10px;display:block;"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                    Search for an order<br>to start scanning.
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+
+<!-- ===== SECTION: COLOR PALETTE ===== -->
+<div class="section">
+    <div class="section-label">Color Palette</div>
+    <div class="swatches">
+        <div class="swatch"><div class="swatch-box" style="background:#1C3D5A;"></div><div class="swatch-name">Navy</div><div class="swatch-hex">#1C3D5A</div></div>
+        <div class="swatch"><div class="swatch-box" style="background:#152E45;"></div><div class="swatch-name">Navy Dark</div><div class="swatch-hex">#152E45</div></div>
+        <div class="swatch"><div class="swatch-box" style="background:#2A5278;"></div><div class="swatch-name">Navy Light</div><div class="swatch-hex">#2A5278</div></div>
+        <div class="swatch"><div class="swatch-box" style="background:#2E9E5E;"></div><div class="swatch-name">Green</div><div class="swatch-hex">#2E9E5E</div></div>
+        <div class="swatch"><div class="swatch-box" style="background:#EBF8F1;border:1px solid #c3e9d4;"></div><div class="swatch-name">Green BG</div><div class="swatch-hex">#EBF8F1</div></div>
+        <div class="swatch"><div class="swatch-box" style="background:#DC3545;"></div><div class="swatch-name">Red</div><div class="swatch-hex">#DC3545</div></div>
+        <div class="swatch"><div class="swatch-box" style="background:#FFF0F0;border:1px solid #f9d0d0;"></div><div class="swatch-name">Red BG</div><div class="swatch-hex">#FFF0F0</div></div>
+        <div class="swatch"><div class="swatch-box" style="background:#FFFFFF;"></div><div class="swatch-name">White</div><div class="swatch-hex">#FFFFFF</div></div>
+        <div class="swatch"><div class="swatch-box" style="background:#F8F9FA;"></div><div class="swatch-name">Gray 50</div><div class="swatch-hex">#F8F9FA</div></div>
+        <div class="swatch"><div class="swatch-box" style="background:#F1F3F5;"></div><div class="swatch-name">Gray 100</div><div class="swatch-hex">#F1F3F5</div></div>
+        <div class="swatch"><div class="swatch-box" style="background:#DEE2E6;"></div><div class="swatch-name">Gray 200</div><div class="swatch-hex">#DEE2E6</div></div>
+        <div class="swatch"><div class="swatch-box" style="background:#CED4DA;"></div><div class="swatch-name">Gray 300</div><div class="swatch-hex">#CED4DA</div></div>
+        <div class="swatch"><div class="swatch-box" style="background:#ADB5BD;"></div><div class="swatch-name">Gray 400</div><div class="swatch-hex">#ADB5BD</div></div>
+        <div class="swatch"><div class="swatch-box" style="background:#868E96;"></div><div class="swatch-name">Gray 500</div><div class="swatch-hex">#868E96</div></div>
+        <div class="swatch"><div class="swatch-box" style="background:#495057;"></div><div class="swatch-name">Gray 700</div><div class="swatch-hex">#495057</div></div>
+        <div class="swatch"><div class="swatch-box" style="background:#212529;"></div><div class="swatch-name">Gray 900</div><div class="swatch-hex">#212529</div></div>
+    </div>
+</div>
+
+
+<!-- ===== SECTION: TYPOGRAPHY ===== -->
+<div class="section">
+    <div class="section-label">Typography — Inter font, all weights</div>
+    <div class="card card-pad">
+        <div class="type-sample">
+            <div class="type-meta">26px / 700 / letter-spacing -0.3px — Completed Title</div>
+            <div style="font-size:26px;font-weight:700;letter-spacing:-0.3px;color:var(--gray-900);">Order Completed</div>
+        </div>
+        <div class="type-sample">
+            <div class="type-meta">20px / 700 — Page Title (desktop)</div>
+            <div style="font-size:20px;font-weight:700;color:var(--gray-900);">Search Order</div>
+        </div>
+        <div class="type-sample">
+            <div class="type-meta">18px / 700 — Section Title</div>
+            <div style="font-size:18px;font-weight:700;color:var(--gray-900);">Scan Log</div>
+        </div>
+        <div class="type-sample">
+            <div class="type-meta">15px / 700 / letter-spacing -0.2px — Order Number</div>
+            <div style="font-size:15px;font-weight:700;letter-spacing:-0.2px;color:var(--gray-900);">SO-10042 · Shipment 3</div>
+        </div>
+        <div class="type-sample">
+            <div class="type-meta">14px / 600 — Item SKU</div>
+            <div style="font-size:14px;font-weight:600;color:var(--gray-900);">SKU-00841</div>
+        </div>
+        <div class="type-sample">
+            <div class="type-meta">13px / 400 — Body / Empty text</div>
+            <div style="font-size:13px;font-weight:400;color:var(--gray-400);">Search for an order to start scanning.</div>
+        </div>
+        <div class="type-sample">
+            <div class="type-meta">12px / 600 — Counter / Meta</div>
+            <div style="font-size:12px;font-weight:600;color:var(--gray-500);">2/4 Done</div>
+        </div>
+        <div class="type-sample">
+            <div class="type-meta">11px / 700 / uppercase / 0.8px spacing — Section Label</div>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--gray-700);">Items</div>
+        </div>
+        <div class="type-sample">
+            <div class="type-meta">10px / 700 / uppercase / 0.6px spacing — Table Header</div>
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--gray-500);">Order Number</div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ===== SECTION: SPACING & RADIUS ===== -->
+<div class="section">
+    <div class="section-label">Spacing Scale &amp; Border Radius</div>
+    <div class="row">
+        <div class="card card-pad" style="flex:1;min-width:200px;">
+            <div class="card-label">Border Radius</div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="width:40px;height:40px;background:var(--navy);border-radius:8px;flex-shrink:0;"></div>
+                    <div style="font-size:12px;color:var(--gray-700);">8px — Buttons, inputs, small cards</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="width:40px;height:40px;background:var(--navy);border-radius:10px;flex-shrink:0;"></div>
+                    <div style="font-size:12px;color:var(--gray-700);">10px — Item rows, search bar</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="width:40px;height:40px;background:var(--navy);border-radius:12px;flex-shrink:0;"></div>
+                    <div style="font-size:12px;color:var(--gray-700);">12px — Order card</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="width:40px;height:40px;background:var(--navy);border-radius:20px;flex-shrink:0;"></div>
+                    <div style="font-size:12px;color:var(--gray-700);">20px — Desktop app frame</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="width:40px;height:40px;background:var(--navy);border-radius:50%;flex-shrink:0;"></div>
+                    <div style="font-size:12px;color:var(--gray-700);">50% — Check circle, badge dot</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <span class="badge badge-scanned" style="flex-shrink:0;"><span class="badge-dot"></span>Scanned</span>
+                    <div style="font-size:12px;color:var(--gray-700);">20px — Badge pill</div>
+                </div>
+            </div>
+        </div>
+        <div class="card card-pad" style="flex:1;min-width:200px;">
+            <div class="card-label">Common Spacing Values</div>
+            <div style="font-size:12px;color:var(--gray-700);line-height:2;">
+                <b>3px</b> — Badge top/bottom padding<br>
+                <b>6px</b> — Item row gap, small margin<br>
+                <b>8px</b> — Items header margin<br>
+                <b>10px</b> — Table header padding<br>
+                <b>11px</b> — Item row padding vertical<br>
+                <b>12px</b> — Order card padding, toast padding<br>
+                <b>14px</b> — Item row padding horizontal, input padding<br>
+                <b>16px</b> — Section padding (mobile)<br>
+                <b>20px</b> — Section padding (≥430px)<br>
+                <b>24px</b> — Section padding (desktop)<br>
+                <b>28–32px</b> — Wider desktop gutters<br>
+                <b>56px</b> — Header height<br>
+            </div>
+        </div>
+        <div class="card card-pad" style="flex:1;min-width:200px;">
+            <div class="card-label">Component Sizes</div>
+            <div style="font-size:12px;color:var(--gray-700);line-height:2;">
+                <b>28×28px</b> — Item check circle<br>
+                <b>36×36px</b> — Header icon touch area<br>
+                <b>26×26px</b> — Header SVG icon<br>
+                <b>44px</b> — Order scan input height<br>
+                <b>46–52px</b> — Search button width/height<br>
+                <b>48–52px</b> — Search input height<br>
+                <b>52px</b> — Item row min-height<br>
+                <b>56px</b> — Header height<br>
+                <b>80×80px</b> — Completed inner circle<br>
+                <b>110×110px</b> — Completed outer circle<br>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

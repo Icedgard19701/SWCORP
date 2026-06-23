@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# App data (never commit uploads, output, or logs)
+uploads/
+output/
+logs/*.log*
+
+# Credentials and secrets (stored outside the repo in ~/.swcorp/)
+.env
+credentials.json
+*.secret
+
+# Claude Code local settings
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp
