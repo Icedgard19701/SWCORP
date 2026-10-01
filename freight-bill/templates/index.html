@@ -6,7 +6,13 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Freight Bill Processor — SWCorp</title>
+  <title>Freight Bill Processor</title>
+  <!-- Favicon: SWCorp square mark, white on a navy tile — one brand icon for both
+       views. Vector, so it stays sharp at every tab size. The PNG fallback is for
+       browsers that ignore SVG favicons (Safari before 17); the icons8 Parcel/Bill
+       glyphs are still used as the header buttons. -->
+  <link type="image/svg+xml" rel="icon" href="{{ base_url }}/static/swcorp-favicon.svg">
+  <link type="image/png" sizes="120x120" rel="icon" href="{{ base_url }}/static/icons8-parcel-fluent-systems-filled-120.png">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
@@ -71,24 +77,60 @@
       padding: 12px 16px;
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: space-between;
       min-height: 56px;
       height: 56px;
       flex-shrink: 0;
       position: relative;
     }
+    /* Header icon box — identical spec to ScanShip .header-icon */
     .sp-icon-link {
-      position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+      order: 3;
       display: flex; align-items: center; justify-content: center;
-      width: 32px; height: 32px; border-radius: 6px;
-      opacity: .7; transition: opacity .2s, background .2s;
+      width: 36px; height: 36px; border-radius: 8px;
+      flex-shrink: 0;
+      text-decoration: none;
+      transition: background .2s;
+      -webkit-tap-highlight-color: transparent;
+      cursor: pointer;
+    }
+    .sp-icon-link:hover,
+    .sp-icon-link:active { background: rgba(255,255,255,.12); }
+    .sp-icon-link svg { width: 26px; height: 26px; filter: brightness(0) invert(1); }
+    /* Left header icon — Small Parcels / back. Same box spec as .sp-icon-link
+       (style guide §4.1): 36×36 box, 26px glyph, radius 8px, placed by flex. */
+    .header-icon-btn {
+      order: 1;
+      display: flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 8px;
+      flex-shrink: 0;
+      background: none; border: none; padding: 0;
+      cursor: pointer;
+      transition: background .2s;
       -webkit-tap-highlight-color: transparent;
     }
-    .sp-icon-link:hover { opacity: 1; background: rgba(255,255,255,.1); }
-    .sp-icon-link svg { width: 22px; height: 22px; filter: brightness(0) invert(1); }
-    .header-logo { display: flex; align-items: center; }
+    .header-icon-btn:hover,
+    .header-icon-btn:active { background: rgba(255,255,255,.12); }
+    /* filled glyph (parcel PNG) — whitened with the same filter as the SharePoint logo.
+       24px, not 26px: this glyph is dense filled art, so it reads heavier than the
+       26px outline glyphs (style guide §4.1). The 36px box never changes. */
+    .header-icon-btn .ico-parcel {
+      display: block; width: 24px; height: 24px;
+      filter: brightness(0) invert(1);
+    }
+    /* back glyph (bill PNG) — filled art too, so same 24px + whitening filter */
+    .header-icon-btn .ico-back {
+      display: none;
+      width: 24px; height: 24px;
+      filter: brightness(0) invert(1);
+    }
+    body.view-parcels .header-icon-btn .ico-parcel { display: none; }
+    body.view-parcels .header-icon-btn .ico-back   { display: block; }
+    /* Left spacer — kept for screens with no left icon */
+    .header-spacer { order: 1; width: 36px; height: 36px; flex-shrink: 0; }
+    .header-logo { order: 2; display: flex; align-items: center; }
     .header-logo-img {
-      height: 28px; width: auto;
+      height: 30px; width: auto;
       filter: brightness(0) invert(1);
     }
 
@@ -104,7 +146,8 @@
     }
 
     /* ── UPLOAD SCREEN ───────────────────────────────────── */
-    #screen-upload {
+    #screen-upload,
+    #screen-parcels {
       flex: 1;
       min-height: 0;
       overflow-y: auto;
@@ -113,6 +156,21 @@
       display: flex;
       flex-direction: column;
       gap: 20px;
+    }
+
+    /* ── SMALL PARCELS SCREEN ────────────────────────────── */
+    #screen-parcels        { display: none; }
+    #screen-parcels.active { display: flex; }
+    #screen-parcels.active.just-entered {
+      animation: scr-enter .34s cubic-bezier(.22,1,.36,1) forwards;
+    }
+    /* Going back to Freight Bill: parcels exits, upload slides in — mirrors the way in */
+    #screen-parcels.active.leaving {
+      animation: scr-exit .22s cubic-bezier(.4,0,1,1) forwards;
+      pointer-events: none;
+    }
+    #screen-upload.re-entering {
+      animation: scr-enter .34s cubic-bezier(.22,1,.36,1) forwards;
     }
 
     .page-title {
@@ -182,6 +240,17 @@
       padding: 4px; border-radius: 4px; transition: color .15s;
     }
     .err-toast-close:hover { color: var(--navy); }
+    /* Blocking: something has to be resolved before the file can be imported.
+       Amber and closed by hand, matching the Additional Files Required notice —
+       a red flash the user can miss reads as "try again", which this is not. */
+    .err-fixed-toast.blocking {
+      border-left-color: #A8873A; max-width: 460px;
+    }
+    .err-fixed-toast.blocking .err-toast-icon { stroke: #A8873A; }
+    .err-fixed-toast.blocking .err-toast-hint {
+      font-size: 11px; font-weight: 600; color: #A8873A;
+      letter-spacing: .3px; text-transform: uppercase; margin-top: 4px;
+    }
 
     /* ── CARRIER SUMMARY TOAST ───────────────────────────── */
     @keyframes toast-in  {
@@ -246,6 +315,19 @@
     }
     .summary-close-btn:hover { color: var(--white); }
 
+    /* Notice bar: the error toast's card, in flow directly above the pills. */
+    .notice-bar {
+      display: none;
+      position: relative;
+      background: #fff;
+      border: 1px solid var(--gray-200);
+      border-left: 3px solid #C8A44D;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(28,61,90,.07);
+    }
+    .notice-bar.visible { display: block; }
+    .notice-bar .err-toast-icon { stroke: #A8873A; }
+
     /* ── ADDITIONAL FILES NOTICE ─────────────────────────── */
     .files-notice {
       display: none;
@@ -285,7 +367,7 @@
       0%   { border-color: var(--green); background: #dff5ea; }
       100% { border-color: var(--gray-200); background: transparent; }
     }
-    #file-input { display: none; }
+    #file-input, #pz-file-input { display: none; }
 
     .upload-icon { margin-bottom: 14px; transition: transform .2s; }
     .upload-zone:hover .upload-icon    { transform: translateY(-3px); }
@@ -536,12 +618,34 @@
       padding: 6px; border-radius: 6px; transition: color .2s, background .2s;
     }
     .comp-close-btn:hover { color: #fff; background: rgba(255,255,255,.1); }
+    /* Bills are handed over as buttons rather than automatic downloads —
+       browsers block every automatic download after the first. */
+    .comp-dl-list {
+      display: flex; flex-direction: column; gap: 8px;
+      max-width: 340px; margin: 16px auto 0;
+      animation: fade-up .4s .46s ease both;
+    }
+    .comp-dl-list:empty { display: none; }
+    .comp-dl-btn {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%; padding: 10px 12px; cursor: pointer;
+      font-family: inherit; font-size: 12px; font-weight: 600; text-align: left;
+      color: var(--white); background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.18); border-radius: 8px;
+      transition: background .15s, border-color .15s, color .15s;
+    }
+    .comp-dl-btn:hover { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.35); }
+    .comp-dl-btn svg   { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; flex-shrink: 0; }
+    .comp-dl-btn .comp-dl-sub { margin-left: auto; font-weight: 500; color: rgba(255,255,255,.45); }
+    .comp-dl-btn.done { color: rgba(255,255,255,.45); background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.10); }
+    .comp-dl-btn.all  { background: var(--white); color: var(--navy); border-color: var(--white); }
+    .comp-dl-btn.all:hover { background: rgba(255,255,255,.88); }
     .comp-countdown { font-size: 11px; color: rgba(255,255,255,.25); margin-top: 18px; animation: fade-up .4s .5s ease both; }
 
     /* ── RESPONSIVE ──────────────────────────────────────── */
     @media (min-width: 430px) {
       .header           { padding: 14px 20px; }
-      .header-logo-img  { height: 32px; }
+      .header-logo-img  { height: 34px; }
       .pills            { gap: 10px; }
       .pill             { padding: 12px 14px; gap: 12px; }
       .pill-label .lbl-top  { font-size: 10px; }
@@ -551,15 +655,32 @@
     /* Desktop: same pattern as ScanShip — centered floating card */
     @media (min-width: 768px) {
       body {
-        background: var(--gray-100);
-        padding: 0;
+        background: var(--white);
         align-items: center;
         justify-content: center;
       }
+      .header          { padding: 14px 24px; }
+      .header-logo-img { height: 36px; }
+      #screen-upload,
+      #screen-parcels  { padding: 28px 32px 20px; }
+      .page-title      { font-size: 20px; }
+      .page-subtitle   { font-size: 13px; }
+      .pills           { gap: 12px; }
+      .pill            { padding: 13px 16px; gap: 12px; }
+    }
+
+    /* Desktop: centered floating card, SWCorp standard (same as Lowe's Invoice
+       Reconciler). It fills the viewport minus a gap that scales with the
+       screen, up to 1480×920. Below 1180×720 the card is too small: the frame
+       fills the viewport, no edge or shadow (rules above). */
+    @media (min-width: 1180px) and (min-height: 720px) {
+      body {
+        --gap: clamp(20px, 4vmin, 48px);
+        padding: var(--gap);
+      }
       .app-frame {
-        width: clamp(680px, 82vw, 1100px);
-        height: 85dvh;
-        max-height: 780px;
+        width: min(1480px, 100%);
+        height: min(920px, calc(100dvh - 2 * var(--gap)));
         flex: none;
         border-radius: 20px;
         overflow: hidden;
@@ -569,13 +690,6 @@
         border-bottom-left-radius: 20px;
         border-bottom-right-radius: 20px;
       }
-      .header          { padding: 14px 24px; }
-      .header-logo-img { height: 34px; }
-      #screen-upload   { padding: 32px 36px 28px; }
-      .page-title      { font-size: 20px; }
-      .page-subtitle   { font-size: 13px; }
-      .pills           { gap: 12px; }
-      .pill            { padding: 13px 16px; gap: 12px; }
     }
   </style>
 </head>
@@ -587,6 +701,14 @@
        HEADER — top of the floating card (identical spec to ScanShip)
        ══════════════════════════════════════════════════════ -->
   <div class="header">
+    <!-- Left corner (opposite SharePoint): Small Parcels — swaps to back arrow in that view -->
+    <button class="header-icon-btn" id="parcels-btn" type="button"
+            title="Small Parcels" aria-label="Small Parcels">
+      <img class="ico-parcel" alt=""
+           src="{{ base_url }}/static/icons8-parcel-fluent-systems-filled-120.png">
+      <img class="ico-back" alt=""
+           src="{{ base_url }}/static/icons8-bill-m_rounded-120.png">
+    </button>
     <a class="sp-icon-link" href="{{ carrier_bills_url }}" target="_blank" rel="noopener" title="Open Carrier Bills Import folder in SharePoint">
       <svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
         <path d="M36.59,13H36.5c-6.3,0-11.63,3.94-13.63,9.55C22.16,22.19,21.35,22,20.5,22h-11c-0.15,0-0.29,0.01-0.43,0.02c-0.7-1.7-1.09-3.57-1.09-5.52C7.98,8.51,14.49,2,22.5,2C29.3,2,35.01,6.69,36.59,13z"/>
@@ -653,6 +775,10 @@
           <div class="err-toast-body">
             <span class="err-toast-title" id="err-toast-title">File Not Accepted</span>
             <span class="err-toast-msg"  id="err-toast-msg"></span>
+            <!-- Blocking messages only: says outright that it will not go away
+                 on its own, so the × is read as the way out. -->
+            <span class="err-toast-hint" id="err-toast-hint"
+                  style="display:none">Close this message to continue</span>
           </div>
         </div>
         <button class="err-toast-close" id="err-toast-close" aria-label="Dismiss">&#x2715;</button>
@@ -670,6 +796,8 @@
         </div>
       </div>
 
+
+
       <div>
         <h1 class="page-title">FREIGHT BILL PROCESSOR</h1>
         <p class="page-subtitle">
@@ -679,7 +807,7 @@
       </div>
 
       <div class="upload-zone" id="dropzone">
-        <input type="file" id="file-input" accept=".xlsx,.csv" multiple>
+        <input type="file" id="file-input" accept=".xlsx,.xls,.csv" multiple>
 
         <!-- Normal state -->
         <div class="upload-content" id="upload-content">
@@ -702,12 +830,19 @@
         </div>
       </div>
 
-      <!-- Additional files notice — shown when P1/PaceJet are required -->
-      <div class="files-notice" id="files-notice">
-        <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-        Additional files required — upload Priority 1 Pending Invoices and PaceJet BulkExport below.
+      <!-- Sits directly above the pills: the same card as the error toast, but in
+           flow and with no auto-dismiss — it stays until the files are in. -->
+      <div class="notice-bar" id="notice-toast">
+        <div class="err-toast-inner">
+          <svg class="err-toast-icon" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <div class="err-toast-body">
+            <span class="err-toast-title">Additional Files Required</span>
+            <span class="err-toast-msg" id="notice-text"></span>
+          </div>
+        </div>
+        <button class="err-toast-close" id="notice-close" aria-label="Dismiss">&#x2715;</button>
       </div>
 
       <!-- Pills: 2 fixed always; conditionals appear after carrier validates -->
@@ -777,6 +912,158 @@
     </div><!-- /screen-upload -->
 
 
+    <!-- ── SCREEN 1b: SMALL PARCELS ────────────────────── -->
+    <div id="screen-parcels">
+
+      <div>
+        <h1 class="page-title">SMALL PARCELS</h1>
+        <p class="page-subtitle">
+          Appends the WWEX raw export or a FedEx Ground invoice into the Small Parcels
+          master workbook, skipping shipments that were already imported.
+        </p>
+      </div>
+
+      <!-- Stays until the required invoice arrives or the × is clicked -->
+      <div class="notice-bar" id="pz-notice-toast">
+        <div class="err-toast-inner">
+          <svg class="err-toast-icon" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <div class="err-toast-body">
+            <span class="err-toast-title">Additional Files Required</span>
+            <span class="err-toast-msg" id="pz-notice-text"></span>
+          </div>
+        </div>
+        <button class="err-toast-close" id="pz-notice-close" aria-label="Dismiss">&#x2715;</button>
+      </div>
+
+      <div class="upload-zone" id="pz-dropzone">
+        <input type="file" id="pz-file-input" accept=".xlsx,.xls,.csv,.pdf" multiple>
+
+        <!-- Normal state -->
+        <div class="upload-content" id="pz-content">
+          <div class="upload-icon">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M12 2.5l8.5 4.25v10.5L12 21.5l-8.5-4.25V6.75L12 2.5z"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M3.5 6.75L12 11l8.5-4.25M12 11v10.5M7.75 4.6l8.5 4.25"
+                    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <p class="upload-prompt">
+            <a href="#" id="pz-choose">Choose a file</a> or drag it here.
+          </p>
+          <p class="upload-hint" id="pz-hint">WWEX raw export (.xls, .xlsx, .csv) or FedEx invoice (.pdf) — add the PaceJet export to resolve more Subaccounts</p>
+        </div>
+
+        <!-- Loading state -->
+        <div class="upload-loading" id="pz-loading">
+          <div class="zone-spinner"></div>
+          <p class="zone-loading-text" id="pz-loading-text">Analyzing file…</p>
+        </div>
+      </div>
+
+      <div class="pills">
+        <!-- Master workbook — checked when the screen opens, before any import -->
+        <div class="pill" id="pill-master-p">
+          <div class="pill-circle">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path fill-rule="evenodd" clip-rule="evenodd"
+                d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12ZM16.0303 8.96967C16.3232 9.26256 16.3232 9.73744 16.0303 10.0303L11.0303 15.0303C10.7374 15.3232 10.2626 15.3232 9.96967 15.0303L7.96967 13.0303C7.67678 12.7374 7.67678 12.2626 7.96967 11.9697C8.26256 11.6768 8.73744 11.6768 9.03033 11.9697L10.5 13.4393L12.7348 11.2045L14.9697 8.96967C15.2626 8.67678 15.7374 8.67678 16.0303 8.96967Z"
+                fill="#1C274C"/>
+            </svg>
+          </div>
+          <div class="pill-label">
+            <span class="lbl-top">Excel</span>
+            <span class="lbl-main">Small Parcels File</span>
+          </div>
+        </div>
+
+        <!-- CONDITIONAL: optional — revealed once a PaceJet export is accepted.
+             Resolves the Subaccount of shipments the carrier billed without any
+             reference Acumatica knows. -->
+        <div class="pill pill-conditional" id="pill-pacejet-p" style="display:none">
+          <div class="pill-circle">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path fill-rule="evenodd" clip-rule="evenodd"
+                d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12ZM16.0303 8.96967C16.3232 9.26256 16.3232 9.73744 16.0303 10.0303L11.0303 15.0303C10.7374 15.3232 10.2626 15.3232 9.96967 15.0303L7.96967 13.0303C7.67678 12.7374 7.67678 12.2626 7.96967 11.9697C8.26256 11.6768 8.73744 11.6768 9.03033 11.9697L10.5 13.4393L12.7348 11.2045L14.9697 8.96967C15.2626 8.67678 15.7374 8.67678 16.0303 8.96967Z"
+                fill="#1C274C"/>
+            </svg>
+          </div>
+          <div class="pill-label">
+            <span class="lbl-top">Optional</span>
+            <span class="lbl-main">PaceJet Export</span>
+          </div>
+        </div>
+
+        <!-- CONDITIONAL: revealed when the helper files are in but no invoice
+             has been uploaded yet. The PaceJet export on its own imports
+             nothing, and three ticked pills read as a finished job — this says
+             outright which file is still missing. -->
+        <div class="pill pill-conditional" id="pill-invoice-p" style="display:none">
+          <div class="pill-circle">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path fill-rule="evenodd" clip-rule="evenodd"
+                d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12ZM16.0303 8.96967C16.3232 9.26256 16.3232 9.73744 16.0303 10.0303L11.0303 15.0303C10.7374 15.3232 10.2626 15.3232 9.96967 15.0303L7.96967 13.0303C7.67678 12.7374 7.67678 12.2626 7.96967 11.9697C8.26256 11.6768 8.73744 11.6768 9.03033 11.9697L10.5 13.4393L12.7348 11.2045L14.9697 8.96967C15.2626 8.67678 15.7374 8.67678 16.0303 8.96967Z"
+                fill="#1C274C"/>
+            </svg>
+          </div>
+          <div class="pill-label">
+            <span class="lbl-top">Required</span>
+            <span class="lbl-main">WWEX or FedEx Invoice</span>
+          </div>
+        </div>
+
+        <!-- CONDITIONAL: revealed once a WWEX raw export is accepted -->
+        <div class="pill pill-conditional" id="pill-wwex-p" style="display:none">
+          <div class="pill-circle">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path fill-rule="evenodd" clip-rule="evenodd"
+                d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12ZM16.0303 8.96967C16.3232 9.26256 16.3232 9.73744 16.0303 10.0303L11.0303 15.0303C10.7374 15.3232 10.2626 15.3232 9.96967 15.0303L7.96967 13.0303C7.67678 12.7374 7.67678 12.2626 7.96967 11.9697C8.26256 11.6768 8.73744 11.6768 9.03033 11.9697L10.5 13.4393L12.7348 11.2045L14.9697 8.96967C15.2626 8.67678 15.7374 8.67678 16.0303 8.96967Z"
+                fill="#1C274C"/>
+            </svg>
+          </div>
+          <div class="pill-label">
+            <span class="lbl-top">WWEX</span>
+            <span class="lbl-main">Raw Export</span>
+          </div>
+        </div>
+
+        <!-- CONDITIONAL: revealed once a FedEx invoice PDF is accepted -->
+        <div class="pill pill-conditional" id="pill-fedex-p" style="display:none">
+          <div class="pill-circle">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path fill-rule="evenodd" clip-rule="evenodd"
+                d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12ZM16.0303 8.96967C16.3232 9.26256 16.3232 9.73744 16.0303 10.0303L11.0303 15.0303C10.7374 15.3232 10.2626 15.3232 9.96967 15.0303L7.96967 13.0303C7.67678 12.7374 7.67678 12.2626 7.96967 11.9697C8.26256 11.6768 8.73744 11.6768 9.03033 11.9697L10.5 13.4393L12.7348 11.2045L14.9697 8.96967C15.2626 8.67678 15.7374 8.67678 16.0303 8.96967Z"
+                fill="#1C274C"/>
+            </svg>
+          </div>
+          <div class="pill-label">
+            <span class="lbl-top">FedEx</span>
+            <span class="lbl-main">Ground Invoice</span>
+          </div>
+        </div>
+
+        <!-- ALWAYS: Acumatica background fetch — resolves the Subaccount of
+             every row on the generated import file -->
+        <div class="pill" id="pill-acumatica-p">
+          <div class="pill-circle">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path fill-rule="evenodd" clip-rule="evenodd"
+                d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12ZM16.0303 8.96967C16.3232 9.26256 16.3232 9.73744 16.0303 10.0303L11.0303 15.0303C10.7374 15.3232 10.2626 15.3232 9.96967 15.0303L7.96967 13.0303C7.67678 12.7374 7.67678 12.2626 7.96967 11.9697C8.26256 11.6768 8.73744 11.6768 9.03033 11.9697L10.5 13.4393L12.7348 11.2045L14.9697 8.96967C15.2626 8.67678 15.7374 8.67678 16.0303 8.96967Z"
+                fill="#1C274C"/>
+            </svg>
+          </div>
+          <div class="pill-label">
+            <span class="lbl-top">Acumatica</span>
+            <a class="lbl-main lbl-link" href="https://swcorp.acumatica.com/(W(2))/Main?CompanyID=Spa+World+PROD&ScreenId=GI989030" target="_blank" rel="noopener">ShipmentsSubAc - JJ</a>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /screen-parcels -->
+
+
     <!-- ── SCREEN 2: PROCESSING ────────────────────────── -->
     <div id="screen-processing">
       <div class="loader"></div>
@@ -798,6 +1085,7 @@
       <p class="comp-records" id="comp-records">Total Records Processed: —</p>
       <div class="comp-divider"></div>
       <p class="comp-note" id="comp-note">File saved to the Carrier Bills Import folder.</p>
+      <div class="comp-dl-list" id="comp-downloads"></div>
       <p class="comp-countdown" id="comp-countdown">Returning to home in 10s…</p>
     </div>
 
@@ -817,15 +1105,23 @@
     carrierDone:    false,
     priority1Done:  false,
     pacejetDone:    false,
-    acumaticaDone:  false,
-    pollTimer:      null,
+    acumaticaDone:   false,
+    acumaticaFailed: false,
+    pollTimer:       null,
+    // Small Parcels screen: whether the master workbook was located, and
+    // whether it is a hand-uploaded copy that has to be downloaded back.
+    parcelMasterOk:   false,
+    parcelMasterCopy: false,
   };
 
   const summaryToast  = document.getElementById('summary-toast');
   const summaryCount  = document.getElementById('summary-count');
   const summaryBody   = document.getElementById('summary-body');
   const summaryCloseBtn = document.getElementById('summary-close');
-  const filesNotice   = document.getElementById('files-notice');
+
+  const noticeToast    = document.getElementById('notice-toast');
+  const noticeText     = document.getElementById('notice-text');
+  const noticeCloseBtn = document.getElementById('notice-close');
   const dropzone       = document.getElementById('dropzone');
   const fileInput      = document.getElementById('file-input');
   const chooseLink     = document.getElementById('choose-link');
@@ -843,6 +1139,7 @@
   const compRec        = document.getElementById('comp-records');
   const compClose      = document.getElementById('comp-close');
   const compCountdown  = document.getElementById('comp-countdown');
+  const compDownloads  = document.getElementById('comp-downloads');
 
   // ── Event wiring ─────────────────────────────────────────────
   chooseLink.addEventListener('click', e => { e.preventDefault(); fileInput.click(); });
@@ -883,7 +1180,7 @@
         showError('Carrier file not found — upload manually.');
         return;
       }
-      if (data.error) { pCarrier.classList.remove('loading'); showError(data.error); return; }
+      if (data.error) { pCarrier.classList.remove('loading'); showError(data.error, data.blocking, data.blocking); return; }
       if (data.warning) showWarning(data.warning);
       markDone(pCarrier);
       s.carrierDone = true;
@@ -892,7 +1189,8 @@
         s.needsPriority1 = true;
         showPill(pP1);
         showPill(pPacejet);
-        filesNotice.classList.add('visible');
+        showNotice('Two more files are needed — upload the Priority 1 '
+                   + 'Pending Invoices and PaceJet BulkExport files below.');
         pP1.classList.add('active');
         pPacejet.classList.add('active');
         updateHint();
@@ -902,7 +1200,14 @@
       }
       checkAllReady();
     })
-    .catch(() => { pCarrier.classList.remove('loading'); });
+    // Anything that is not JSON lands here — a server error page, a dropped
+    // connection. Without a message the pill simply stopped spinning and the
+    // screen looked like it had finished, so the failure has to say something.
+    .catch(() => {
+      pCarrier.classList.remove('loading');
+      showError('The Carrier Import File could not be loaded automatically — '
+                + 'upload it manually below.');
+    });
 
   // Ask for notification permission on page load
   if ('Notification' in window && Notification.permission === 'default') {
@@ -921,18 +1226,19 @@
     return new Promise(resolve => {
     hideError();
     const ext = file.name.toLowerCase();
-    if (!ext.endsWith('.xlsx') && !ext.endsWith('.csv')) {
-      showError('Invalid file type — only .xlsx and .csv files are accepted.'); resolve(); return;
+    if (!ext.endsWith('.xlsx') && !ext.endsWith('.csv') && !ext.endsWith('.xls')) {
+      showError('Invalid file type — only .xlsx, .xls and .csv files are accepted.'); resolve(); return;
     }
     setUploading(true, 'Analyzing file…');
     const fd = new FormData();
     fd.append('sid', SID);
     fd.append('file', file);
+    fd.append('scope', 'main');
     fetch(BASE + '/upload-auto', { method: 'POST', body: fd })
       .then(r => r.json())
       .then(data => {
         setUploading(false);
-        if (data.error) { showError(data.error); resolve(); return; }
+        if (data.error) { showError(data.error, data.blocking, data.blocking); resolve(); return; }
         if (data.warning) showWarning(data.warning);
         flashAccepted();
 
@@ -948,7 +1254,8 @@
             pillsWrap.classList.add('four-col');
             showPill(pP1);
             showPill(pPacejet);
-            filesNotice.classList.add('visible');
+            showNotice('Two more files are needed — upload the Priority 1 '
+                       + 'Pending Invoices and PaceJet BulkExport files below.');
             if (s.priority1Done) { markDone(pP1); } else { pP1.classList.add('active'); }
             if (s.pacejetDone)   { markDone(pPacejet); } else { pPacejet.classList.add('active'); }
             updateHint();
@@ -977,7 +1284,11 @@
           markDone(pPacejet);
           updateHint();
           checkAllReady();
+
         }
+        // Small-parcel files (WWEX raw export, FedEx invoice PDF, the Small
+        // Parcels workbook) are rejected by /upload-auto for this screen — they
+        // are imported from the Small Parcels screen only.
         resolve();
       })
       .catch(() => { setUploading(false); showError('Connection error — could not reach the server. Please try again.'); resolve(); });
@@ -985,6 +1296,8 @@
   }
 
   function updateHint() {
+    // The notice has served its purpose once both files are in.
+    if (s.needsPriority1 && s.priority1Done && s.pacejetDone) hideNotice();
     if (!s.carrierDone) {
       uploadHint.textContent = 'Carrier Import, Priority 1, or PaceJet (.xlsx, .csv)';
       return;
@@ -1011,13 +1324,18 @@
         .then(d => {
           if (d.status === 'done') {
             clearInterval(s.pollTimer); s.pollTimer = null;
+            // One fetch feeds both screens: the main flow's matching cascade and
+            // the Subaccount column of the Small Parcels import file.
             markDone(pAcumatica);
+            markDone(pAcumaticaP);
             s.acumaticaDone = true;
             checkAllReady();
           } else if (d.status === 'error') {
             clearInterval(s.pollTimer); s.pollTimer = null;
-            pAcumatica.classList.remove('loading'); // back to empty circle
-            showError('Acumatica: ' + (d.error || 'Error de sincronización.'));
+            pAcumatica.classList.remove('loading');  // back to empty circle
+            pAcumaticaP.classList.remove('loading');
+            s.acumaticaFailed = true;
+            showError('Acumatica: ' + (d.error || 'Sync error.'));
           }
         }).catch(() => {});
     }, 2500);
@@ -1039,14 +1357,17 @@
   let _msgTimer = null;
   let _msgIdx   = 0;
 
-  function startMsgCycle() {
+  // msgs defaults to the freight-bill sequence; Small Parcels passes its own.
+  function startMsgCycle(msgs) {
+    const list = msgs || PROC_MSGS;
     _msgIdx = 0;
-    procText.textContent = PROC_MSGS[0];
+    procText.style.opacity = '1';
+    procText.textContent = list[0];
     _msgTimer = setInterval(() => {
-      _msgIdx = (_msgIdx + 1) % PROC_MSGS.length;
+      _msgIdx = (_msgIdx + 1) % list.length;
       procText.style.opacity = '0';
       setTimeout(() => {
-        procText.textContent  = PROC_MSGS[_msgIdx];
+        procText.textContent  = list[_msgIdx];
         procText.style.opacity = '1';
       }, 300);
     }, 2800);
@@ -1093,6 +1414,7 @@
         compRec.textContent = 'Total Records Processed: ' + data.total_records;
 
         const compNote = document.getElementById('comp-note');
+        compDownloads.innerHTML = '';  // LTL run hands nothing over by button
         if (data.copy_error) {
           compNote.textContent = 'Could not save to shared folder — downloading instead.';
           window.location.href = BASE + '/download?sid=' + (data.sid || SID) + '&file=' + encodeURIComponent(data.filename);
@@ -1150,6 +1472,7 @@
   }
 
   function showScreen(name) {
+    if (parcelsOpen()) closeParcels(true);   // never leave Small Parcels stacked under a screen
     const fromUpload   = scrUpload.style.display !== 'none';
     const fromProcess  = scrProcess.classList.contains('active');
 
@@ -1192,6 +1515,7 @@
   let _countdownTick = null;
 
   function startResetCountdown() {
+    if (_countdownTick) { clearInterval(_countdownTick); _countdownTick = null; }
     let secs = 10;
     compCountdown.textContent = `Returning to home in ${secs}s…`;
     _countdownTick = setInterval(() => {
@@ -1212,6 +1536,530 @@
   }
 
   compClose.addEventListener('click', resetApp);
+
+  // ── Small Parcels view (WWEX raw export, FedEx invoice PDF) ───
+  const scrParcels = document.getElementById('screen-parcels');
+  const parcelsBtn = document.getElementById('parcels-btn');
+  const pzDrop     = document.getElementById('pz-dropzone');
+  const pzInput    = document.getElementById('pz-file-input');
+  const pzChoose   = document.getElementById('pz-choose');
+  const pzHint     = document.getElementById('pz-hint');
+  const pzLoadTxt  = document.getElementById('pz-loading-text');
+  const pMasterP    = document.getElementById('pill-master-p');
+  const pPacejetP   = document.getElementById('pill-pacejet-p');
+  const pAcumaticaP = document.getElementById('pill-acumatica-p');
+  const pInvoiceP  = document.getElementById('pill-invoice-p');
+  const pWWEXp     = document.getElementById('pill-wwex-p');
+  const pFedexP    = document.getElementById('pill-fedex-p');
+  const PZ_HINT_DEFAULT = pzHint.textContent;
+  const pzNotice      = document.getElementById('pz-notice-toast');
+  const pzNoticeText  = document.getElementById('pz-notice-text');
+  const pzNoticeClose = document.getElementById('pz-notice-close');
+
+  // ── "An invoice is still needed" ──────────────────────────────
+  // The PaceJet export and the workbook are both helpers: neither imports a
+  // single row on its own. Landing back on this screen with every pill ticked
+  // and no invoice looks like a completed run, so the state is stated instead —
+  // a notice that has to be closed by hand, and a pill naming the missing file.
+  function showInvoiceNeeded() {
+    showPill(pInvoiceP);
+    pInvoiceP.classList.add('active');
+    pzNoticeText.textContent = 'One more file is needed — upload the WWEX raw '
+                             + 'export or a FedEx invoice to import.';
+    pzNotice.classList.add('visible');
+    pzHint.textContent = 'Upload the WWEX raw export (.xls, .xlsx, .csv) or a '
+                       + 'FedEx invoice (.pdf) to import';
+  }
+
+  // Called the moment an invoice is accepted: the placeholder has been answered
+  // by a real carrier pill, so it goes away rather than sitting alongside it.
+  function clearInvoiceNeeded() {
+    pzNotice.classList.remove('visible');
+    pInvoiceP.classList.remove('active', 'pill-show');
+    pInvoiceP.style.display = 'none';
+    pzHint.textContent = PZ_HINT_DEFAULT;
+  }
+
+  pzNoticeClose.addEventListener('click', () => pzNotice.classList.remove('visible'));
+
+  // type returned by /upload-auto -> pill, /parcels-append type, target tab
+  const PARCEL_KINDS = {
+    wwex_raw:  { pill: pWWEXp,  type: 'wwex_raw',  tab: 'WWEX'  },
+    fedex_pdf: { pill: pFedexP, type: 'fedex_pdf', tab: 'Fedex' },
+  };
+
+  // ── Notice bar ────────────────────────────────────────────────
+  // Instructions the user has to act on, so it stays until dismissed — either by
+  // the × or by hideNotice() once the requirement is satisfied.
+  function hideNotice() {
+    noticeToast.classList.remove('visible');
+  }
+
+  function showNotice(msg) {
+    noticeText.textContent = msg;
+    noticeToast.classList.add('visible');
+  }
+
+  noticeCloseBtn.addEventListener('click', hideNotice);
+
+  // ── Generated Acumatica bills ─────────────────────────────────
+  // One file per uploaded carrier file, collected across the whole batch so the
+  // completion screen can hand them all over at once.
+  let _importFiles = [];
+
+  function money(n) {
+    return '$' + (n || 0).toLocaleString('en-US',
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // Several downloads in a row: a hidden iframe per file, staggered, because a
+  // single navigation can only carry one of them.
+  function triggerDownload(url, delay) {
+    setTimeout(() => {
+      const f = document.createElement('iframe');
+      f.style.display = 'none';
+      f.src = url;
+      document.body.appendChild(f);
+      setTimeout(() => f.remove(), 60000);
+    }, delay);
+  }
+
+  function collectImportFile(d) {
+    if (d.status_error)  showError(d.status_error);
+    if (d.import_error) { showError(d.import_error); return; }
+    if (!d.import_file) return;
+    _importFiles.push({
+      file:        d.import_file,
+      label:       (d.tab || '') + (d.invoice_number ? ' ' + d.invoice_number : ''),
+      rows:        d.import_rows || 0,
+      total:       d.import_total || 0,
+      unmatched:   d.import_unmatched || 0,
+      viaPacejet:  d.import_via_pacejet || 0,
+      viaSender:   d.import_via_sender || 0,
+    });
+  }
+
+  function parcelsOpen() { return scrParcels.classList.contains('active'); }
+
+  // The tab icon is the SWCorp mark and no longer follows the view — one brand
+  // icon for both screens. Kept as a no-op so the view-switch calls below stay
+  // readable; delete both call sites if the per-view icon is never coming back.
+  function setFavicon() {}
+
+  // Locate the master workbook before anything can be imported into it. Runs on
+  // first open, and again on any later open that found nothing — the shared
+  // folder may have finished syncing in the meantime.
+  function checkParcelMaster() {
+    if (s.parcelMasterOk) return;
+    pMasterP.classList.add('loading');
+    const fd = new FormData(); fd.append('sid', SID);
+    fetch(BASE + '/parcels-master', { method: 'POST', body: fd })
+      // 404 = SMALL_PARCEL_ENABLED is off server-side; the body isn't JSON
+      .then(r => (r.status === 404
+        ? { error: 'Small Parcels is disabled — enable it on the server.' }
+        : r.json()))
+      .then(d => {
+        pMasterP.classList.remove('loading');
+        if (!d.found) {
+          // Not fatal: the workbook can be uploaded by hand instead.
+          showError(d.error || 'Small Parcels workbook not found — upload it manually.');
+          pzHint.textContent = 'Upload the Small Parcels workbook (.xlsx) to continue';
+          return;
+        }
+        s.parcelMasterOk  = true;
+        s.parcelMasterCopy = !!d.session_copy;
+        markDone(pMasterP);
+        pzHint.textContent = PZ_HINT_DEFAULT;
+      })
+      .catch(() => {
+        pMasterP.classList.remove('loading');
+        showError('Connection error — could not check the Small Parcels workbook.');
+      });
+  }
+
+  // keepError = we are returning here because an import just failed, and the
+  // error toast explaining why was raised a tick ago — wiping it is what left
+  // the carrier pill grey with no message at all.
+  function openParcels(keepError) {
+    if (!keepError) hideError();
+    // The fetch was already kicked off on page load; mirror wherever it got to.
+    if (s.acumaticaDone)           markDone(pAcumaticaP);
+    else if (!s.acumaticaFailed)   { pAcumaticaP.classList.add('loading'); startPolling(); }
+    checkParcelMaster();
+    document.body.classList.add('view-parcels');
+    parcelsBtn.title = 'Freight Bill Processor';
+    parcelsBtn.setAttribute('aria-label', 'Freight Bill Processor');
+    setFavicon('bill');
+
+    // Upload exits, then parcels enters — same two-step as the way back
+    scrUpload.classList.remove('re-entering', 'entering');
+    scrUpload.classList.add('leaving');
+    scrUpload.addEventListener('animationend', () => {
+      scrUpload.classList.remove('leaving');
+      scrUpload.style.display = 'none';
+      scrParcels.classList.add('active', 'just-entered');
+      scrParcels.addEventListener('animationend',
+        () => scrParcels.classList.remove('just-entered'), { once: true });
+    }, { once: true });
+  }
+
+  // instant = another screen (processing/complete) is taking over, so skip the
+  // exit animation and just get out of the way.
+  function closeParcels(instant) {
+    document.body.classList.remove('view-parcels');
+    parcelsBtn.title = 'Small Parcels';
+    parcelsBtn.setAttribute('aria-label', 'Small Parcels');
+    setFavicon('parcel');
+
+    function finish() {
+      scrParcels.classList.remove('active', 'just-entered', 'leaving');
+      // Only bring the upload screen back if no other screen has taken over
+      if (!scrProcess.classList.contains('active') && !scrComplete.classList.contains('active')) {
+        scrUpload.style.display = '';
+        scrUpload.classList.remove('re-entering');
+        void scrUpload.offsetWidth;                 // restart the animation
+        scrUpload.classList.add('re-entering');
+        scrUpload.addEventListener('animationend',
+          () => scrUpload.classList.remove('re-entering'), { once: true });
+      }
+    }
+
+    if (instant) { finish(); return; }
+    scrParcels.classList.remove('just-entered');
+    scrParcels.classList.add('leaving');
+    scrParcels.addEventListener('animationend', finish, { once: true });
+  }
+
+  // Guard: the swap is two chained animations, so ignore clicks until it settles
+  let _navBusy = false;
+  parcelsBtn.addEventListener('click', () => {
+    if (_navBusy) return;
+    _navBusy = true;
+    setTimeout(() => { _navBusy = false; }, 620);   // .28s exit + .34s enter
+    if (parcelsOpen()) closeParcels(); else openParcels();
+  });
+
+  pzChoose.addEventListener('click', e => { e.preventDefault(); pzInput.click(); });
+  pzDrop.addEventListener('click', e => { if (e.target !== pzChoose) pzInput.click(); });
+  pzInput.addEventListener('change', () => {
+    const files = [...pzInput.files];
+    pzInput.value = '';
+    if (files.length) sendParcelFiles(files);
+  });
+  pzDrop.addEventListener('dragover',  e => { e.preventDefault(); pzDrop.classList.add('drag-over'); });
+  pzDrop.addEventListener('dragleave', ()  => pzDrop.classList.remove('drag-over'));
+  pzDrop.addEventListener('dragend',   ()  => pzDrop.classList.remove('drag-over'));
+  pzDrop.addEventListener('drop', e => {
+    e.preventDefault(); pzDrop.classList.remove('drag-over');
+    const files = [...e.dataTransfer.files];
+    if (files.length) sendParcelFiles(files);
+  });
+
+  // Several files at once — the WWEX export plus a FedEx invoice, or a batch of
+  // invoices. Processed one at a time: they all write to the same workbook, and
+  // each one produces its own Acumatica file.
+  // The PaceJet export imports nothing by itself — it only lets later invoices
+  // resolve more Subaccounts — so a batch made of nothing else never earns the
+  // processing screen. Detected from the CSV header, the same column the server
+  // validates on, because the WWEX raw export is also a .csv and only the
+  // header tells them apart.
+  function sniffPacejetCsv(file) {
+    if (!file.name.toLowerCase().endsWith('.csv')) return Promise.resolve(false);
+    return file.slice(0, 65536).text()
+      .then(chunk => {
+        const header = chunk.split(/\r?\n/, 1)[0] || '';
+        return /shipmentuserfield3/i.test(header) || header.split(',').length > 60;
+      })
+      .catch(() => false);
+  }
+
+  async function sendParcelFiles(files) {
+    // Helper files first, invoices after: the PaceJet export (.csv) and the
+    // workbook itself (.xlsx) have to be in place before anything is appended,
+    // since each invoice is resolved and billed as it is imported. The invoices
+    // are the WWEX export (.xls) and the FedEx PDF.
+    const RANK = { csv: 0, xlsx: 1, xls: 2, pdf: 3 };
+    const rank = f => RANK[f.name.toLowerCase().split('.').pop()] ?? 9;
+    const queue = [...files].sort((a, b) => rank(a) - rank(b));
+
+    const isHelper   = await Promise.all(queue.map(sniffPacejetCsv));
+    const helperOnly = isHelper.length > 0 && isHelper.every(Boolean);
+
+    _importFiles = [];
+    _parcelResults = [];
+    if (!helperOnly) {
+      showScreen('processing');
+      startMsgCycle(PARCEL_PROC_MSGS);
+    }
+
+    for (let i = 0; i < queue.length; i++) {
+      await sendParcelFile(queue[i], isHelper[i]);
+      if (_parcelAborted) break;
+    }
+
+    // Nothing was appended and the screen never changed, so there is no
+    // completion report to show and no screen to return to. Any failure has
+    // already put its message on this screen.
+    if (helperOnly) {
+      _parcelAborted = false;
+      return;
+    }
+
+    stopMsgCycle();
+    // Back to Small Parcels when something failed (the error stays on screen) or
+    // when the batch was only the workbook itself and there is nothing to report.
+    if (_parcelAborted || !_parcelResults.length) {
+      const failed = _parcelAborted;
+      _parcelAborted = false;
+      showScreen('upload');
+      openParcels(failed);
+      // Nothing was imported and nothing went wrong — the batch was helper
+      // files only, so say which file would actually import something. An
+      // outright failure is left to its own message.
+      if (!failed) showInvoiceNeeded();
+      return;
+    }
+    showParcelComplete();
+  }
+
+  const PARCEL_PROC_MSGS = [
+    'Reading the carrier file...',
+    'Matching against what is already logged...',
+    'Appending to the Small Parcels workbook...',
+    'Resolving customers in Acumatica...',
+    'Building the Acumatica bill...',
+  ];
+
+  let _parcelResults = [];
+  let _parcelAborted = false;
+
+  function showParcelComplete() {
+    const added   = _parcelResults.reduce((n, r) => n + (r.added || 0), 0);
+    const skipped = _parcelResults.reduce((n, r) => n + (r.skipped_duplicates || 0), 0);
+    const gaps    = _importFiles.reduce((n, f) => n + f.unmatched, 0);
+
+    compRec.textContent = 'Total Records Processed: ' + added;
+
+    const lines = _parcelResults.map(r => {
+      const label = (r.tab || '') + (r.invoice_number ? ' ' + r.invoice_number : '');
+      return r.added
+        ? `${label} — ${r.added} rows logged, ${r.status || ''}`
+        : `${label} — already imported, nothing new`;
+    });
+    if (skipped) lines.push(`${skipped} duplicate rows skipped.`);
+    // Charges the invoice bills to the account rather than to a shipment (a
+    // scheduled pickup, a late fee). Called out because they carry no tracking
+    // number, so AP would otherwise read them as unidentified rows.
+    const fees = _parcelResults.reduce((n, r) => n + (r.fee_rows_added || 0), 0);
+    if (fees) {
+      lines.push(`${fees === 1 ? '1 non-shipment charge' : fees + ' non-shipment charges'} `
+                 + 'billed to the carrier fee subaccount.');
+    }
+    if (gaps) {
+      lines.push(`${gaps === 1 ? '1 row needs' : gaps + ' rows need'} a Subaccount `
+                 + '— highlighted in the file.');
+    }
+    const rescued = _importFiles.reduce((n, f) => n + f.viaPacejet, 0);
+    if (rescued) {
+      lines.push(`${rescued === 1 ? '1 row resolved' : rescued + ' rows resolved'} `
+                 + 'through PaceJet.');
+    }
+    // Sender-matched rows carry the customer's Subaccount but not a shipment, so
+    // they are called out separately from the ones resolved by reference.
+    const bySender = _importFiles.reduce((n, f) => n + f.viaSender, 0);
+    if (bySender) {
+      lines.push(`${bySender === 1 ? '1 row resolved' : bySender + ' rows resolved'} `
+                 + 'by sender name.');
+    }
+    const wantsMaster = Boolean(s.parcelMasterCopy && added);
+    if (_importFiles.length || wantsMaster) {
+      lines.push(_importFiles.length === 1 && !wantsMaster
+        ? 'Your Acumatica bill is ready below.'
+        : 'Your files are ready below.');
+    }
+
+    document.getElementById('comp-note').innerHTML = lines.join('<br>');
+    buildParcelDownloads(wantsMaster);
+
+    showScreen('complete');
+    fireNotification(added, !s.parcelMasterCopy);
+    // The buttons live on this screen, so the auto-reset waits until every file
+    // has been taken. Nothing to take — reset as before.
+    if (_pendingDownloads) {
+      compCountdown.textContent = 'Download your files, then close this screen.';
+    } else {
+      startResetCountdown();
+    }
+  }
+
+  let _pendingDownloads = 0;
+
+  // One button per generated bill, plus a zip of all of them. Automatic
+  // downloads are not used: Chrome and Edge silently block every one after the
+  // first, so only the first bill of a multi-carrier run ever arrived.
+  function buildParcelDownloads(wantsMaster) {
+    compDownloads.innerHTML = '';
+    _pendingDownloads = 0;
+
+    const ICON = '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">'
+               + '<path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16"/></svg>';
+
+    const addBtn = (label, sub, url, opts = {}) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'comp-dl-btn' + (opts.all ? ' all' : '') + (opts.cls ? ' ' + opts.cls : '');
+      b.innerHTML = ICON + '<span>' + label + '</span>'
+                  + (sub ? '<span class="comp-dl-sub">' + sub + '</span>' : '');
+      if (!opts.optional) _pendingDownloads++;
+      b.addEventListener('click', () => {
+        triggerDownload(url, 0);
+        if (!b.classList.contains('done')) {
+          b.classList.add('done');
+          if (!opts.optional && --_pendingDownloads === 0) startResetCountdown();
+        }
+      });
+      compDownloads.appendChild(b);
+      return b;
+    };
+
+    for (const f of _importFiles) {
+      addBtn(f.label || f.file, f.rows ? f.rows + ' rows' : '',
+             BASE + '/parcels-import-download?sid=' + encodeURIComponent(SID)
+                  + '&file=' + encodeURIComponent(f.file),
+             { cls: 'bill' });
+    }
+    // A workbook uploaded by hand has no shared copy to write back to, so the
+    // updated file has to come along too.
+    if (wantsMaster) {
+      addBtn('Updated Small Parcels workbook', '',
+             BASE + '/parcels-download?sid=' + encodeURIComponent(SID));
+    }
+    // Convenience on top of the per-file buttons — one click, one file, no
+    // browser blocking. It does not count towards the pending files, since the
+    // individual buttons already cover them.
+    if (_importFiles.length > 1) {
+      addBtn('Download all bills', '.zip',
+             BASE + '/parcels-import-zip?sid=' + encodeURIComponent(SID),
+             { all: true, optional: true })
+        .addEventListener('click', () => {
+          // The zip carries every bill, so those buttons are satisfied. The
+          // hand-uploaded workbook is not in it and stays pending.
+          compDownloads.querySelectorAll('.comp-dl-btn.bill:not(.done)').forEach(x => {
+            x.classList.add('done');
+            _pendingDownloads--;
+          });
+          if (_pendingDownloads === 0) startResetCountdown();
+        });
+    }
+  }
+
+  function sendParcelFile(file, isHelper) {
+    hideError();
+    const name = file.name.toLowerCase();
+    if (!/\.(xlsx|xls|csv|pdf)$/.test(name)) {
+      showError('Invalid file type — only .xlsx, .xls, .csv and .pdf files are accepted.');
+      _parcelAborted = true;
+      return;
+    }
+    // Until the workbook is located, the only file worth accepting is the
+    // workbook itself.
+    if (!s.parcelMasterOk && !name.endsWith('.xlsx')) {
+      showError('Small Parcels workbook not found — upload it before importing invoices.');
+      _parcelAborted = true;
+      return;
+    }
+    // The PaceJet export takes the pill and leaves the drop zone alone: the
+    // upload is the whole job, and taking over the zone reads as an import
+    // being processed when none is.
+    if (isHelper) {
+      showPill(pPacejetP);
+      pPacejetP.classList.add('loading');
+    } else {
+      pzLoadTxt.textContent = 'Analyzing file…';
+      pzDrop.classList.add('uploading');
+    }
+
+    const fd = new FormData();
+    fd.append('sid', SID);
+    fd.append('file', file);
+    fd.append('scope', 'parcels');
+    // Returned so sendParcelFiles can await each file before starting the next.
+    return fetch(BASE + '/upload-auto', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(data => {
+        pzDrop.classList.remove('uploading');
+        pPacejetP.classList.remove('loading');
+        if (data.error) {
+          showError(data.error, data.blocking, data.blocking);
+          _parcelAborted = true;
+          return;
+        }
+
+        pzDrop.classList.add('accepted');
+        pzDrop.addEventListener('animationend', () => pzDrop.classList.remove('accepted'), { once: true });
+
+        // Optional helper file — nothing to append. Every invoice imported after
+        // it can use it to resolve rows Acumatica alone cannot.
+        if (data.type === 'pacejet') {
+          showPill(pPacejetP);
+          markDone(pPacejetP);
+          // Helper file only. Whether the invoice is still to come depends on
+          // the rest of the batch, so the ask is raised once the batch ends.
+          return;
+        }
+
+        // The workbook itself — the manual fallback. Nothing to append yet.
+        if (data.type === 'sp_master') {
+          s.parcelMasterOk   = true;
+          s.parcelMasterCopy = true;
+          markDone(pMasterP);
+          pzHint.textContent = PZ_HINT_DEFAULT;
+          return;
+        }
+
+        const kind = PARCEL_KINDS[data.type];
+        if (!kind) {
+          showError('Wrong file — this screen only accepts the WWEX raw export, '
+                    + 'a FedEx invoice PDF, or the Small Parcels workbook.');
+          _parcelAborted = true;
+          return;
+        }
+
+        clearInvoiceNeeded();
+        showPill(kind.pill);
+        kind.pill.classList.add('loading');
+        pzLoadTxt.textContent = 'Appending to the ' + kind.tab + ' tab…';
+        const afd = new FormData();
+        afd.append('sid', SID);
+        afd.append('type', kind.type);
+        return fetch(BASE + '/parcels-append', { method: 'POST', body: afd })
+          // 404 = SMALL_PARCEL_ENABLED is off server-side; body isn't JSON
+          .then(r => (r.status === 404
+            ? { error: 'Small Parcels is disabled — enable it on the server.' }
+            : r.json()))
+          .then(wd => {
+            kind.pill.classList.remove('loading');
+            // Sticky: the append is the slow step, the user may have looked
+            // away, and a 6-second toast is how this failure went silent.
+            if (wd.error) {
+              showError(wd.error, true, wd.blocking);
+              _parcelAborted = true;
+              return;
+            }
+            markDone(kind.pill);
+            _parcelResults.push(wd);
+            collectImportFile(wd);
+          });
+      })
+      .catch(() => {
+        pzDrop.classList.remove('uploading');
+        pPacejetP.classList.remove('loading');
+        pWWEXp.classList.remove('loading');
+        pFedexP.classList.remove('loading');
+        _parcelAborted = true;
+        showError('Connection error — could not reach the server. Please try again.');
+      });
+  }
 
   // ── Browser notification ──────────────────────────────────────
   function fireNotification(totalRecords, savedToOneDrive) {
@@ -1266,6 +2114,7 @@
   const errFixedToast  = document.getElementById('err-fixed-toast');
   const errToastTitle  = document.getElementById('err-toast-title');
   const errToastMsg    = document.getElementById('err-toast-msg');
+  const errToastHint   = document.getElementById('err-toast-hint');
   const errToastClose  = document.getElementById('err-toast-close');
   let   _errTimer      = null;
 
@@ -1281,7 +2130,12 @@
     _dismissErrToast();
   });
 
-  function showError(msg) {
+  // sticky   = stays up until dismissed instead of auto-hiding after 6s.
+  // blocking = on top of that, presented as an action-required notice rather
+  //            than a rejected upload: amber, wider, and saying so in as many
+  //            words. Used when the file was fine but the import cannot go
+  //            ahead until someone resolves what the message describes.
+  function showError(msg, sticky, blocking) {
     // Split into title + detail if the message has a period or dash separator
     const sepIdx = msg.search(/[—–\-]\s/);
     if (sepIdx > 0) {
@@ -1293,10 +2147,14 @@
       const cap = msg.charAt(0).toUpperCase() + msg.slice(1);
       errToastMsg.textContent   = cap;
     }
+    errFixedToast.classList.toggle('blocking', Boolean(blocking));
+    errToastHint.style.display = blocking ? '' : 'none';
     errFixedToast.classList.remove('hiding');
     errFixedToast.classList.add('visible');
     if (_errTimer) clearTimeout(_errTimer);
-    _errTimer = setTimeout(() => { _errTimer = null; _dismissErrToast(); }, 6000);
+    _errTimer = sticky
+      ? null
+      : setTimeout(() => { _errTimer = null; _dismissErrToast(); }, 6000);
   }
 
   function showWarning(msg) {

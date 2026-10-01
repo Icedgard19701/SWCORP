@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 
 import pandas as pd
-from flask import (Flask, render_template, request, jsonify,
+from flask import (Flask, abort, render_template, request, jsonify,
                    send_file, session, after_this_request)
 
 from config import (APPLICATION_ROOT, SECRET_KEY,
@@ -19,7 +19,10 @@ from processor import (analyze_carrier_file, classify_file,
                        fetch_acumatica_shipments,
                        validate_carrier_file,
                        validate_priority1_file,
-                       validate_pacejet_file)
+                       validate_pacejet_file,
+                       validate_wwex_raw_file,
+                       append_wwex_raw_to_master,
+                       WWEX_SMALL_PARCEL_ENABLED)
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -33,6 +36,7 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 _jobs:   dict = {}  # {sid: {status, thread, data, error}}
 _hashes: dict = {}  # {sid: {file_type: md5_hash}}
 _lock = threading.Lock()
+_master_lock = threading.Lock()  # serializes writes to the shared master Carrier Import File
 
 
 def _get_sid() -> str | None:
@@ -40,6 +44,15 @@ def _get_sid() -> str | None:
     return (request.form.get('sid') or
             request.args.get('sid') or
             session.get('sid'))
+
+
+def _find_master_carrier_file():
+    """Locate the live 'Carrier Import File*.xlsx' in the Iris shared folder."""
+    if not CARRIER_SOURCE_DIR.exists():
+        return None
+    xlsx_files = [f for f in CARRIER_SOURCE_DIR.glob('*.xlsx')
+                  if f.name.startswith('Carrier Import File') and not f.name.startswith('~$')]
+    return xlsx_files[0] if xlsx_files else None
 
 @app.context_processor
 def inject_base():
@@ -67,9 +80,13 @@ def upload_auto():
     if not f:
         return jsonify(error='No file received.'), 400
 
-    filename  = f.filename or 'upload'
-    is_csv    = filename.lower().endswith('.csv')
-    ext       = 'csv' if is_csv else 'xlsx'
+    filename    = f.filename or 'upload'
+    filename_lc = filename.lower()
+    is_csv      = filename_lc.endswith('.csv')
+    # Preserve the real extension for legacy binary .xls (WWEX raw export) —
+    # pandas picks its Excel engine (xlrd vs openpyxl) from the file suffix,
+    # so saving old-format .xls content under a .xlsx name breaks reading it.
+    ext = 'csv' if is_csv else ('xls' if filename_lc.endswith('.xls') else 'xlsx')
     upload_dir = UPLOAD_DIR / sid
     upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -118,6 +135,12 @@ def upload_auto():
         except Exception:
             pass
         analysis       = analyze_carrier_file(carrier_path)
+        # Required cells left blank — stop here rather than after processing.
+        # Drop the file and its hash so the corrected one can be re-uploaded.
+        if analysis['missing_message']:
+            carrier_path.unlink(missing_ok=True)
+            stored_hashes.pop('carrier', None)
+            return jsonify(error=analysis['missing_message'], blocking=True), 400
         needs_priority1 = analysis['needs_priority1']
         summary         = analysis['summary']
         _start_acumatica_fetch(sid)
@@ -145,6 +168,52 @@ def upload_auto():
         _hashes[sid] = stored_hashes
         _start_acumatica_fetch(sid)
         return jsonify(type='pacejet')
+
+    elif file_type == 'wwex_raw':
+        is_valid, validation_msg = validate_wwex_raw_file(temp_path)
+        if not is_valid:
+            temp_path.unlink(missing_ok=True)
+            return jsonify(error=validation_msg), 400
+
+        # Detection only — stage the file and return immediately so the pill
+        # can show up + start its loading spinner. The actual (slow) append
+        # to the shared master workbook happens in /wwex-append below.
+        staged_path = upload_dir / f'wwex_raw.{ext}'
+        move(temp_path, staged_path)
+        return jsonify(type='wwex_raw')
+
+
+@app.route('/wwex-append', methods=['POST'])
+def wwex_append():
+    """Performs the actual (slow) append of a staged WWEX raw file into the
+    shared master workbook. Split from /upload-auto so the front-end can show
+    the WWEX pill's loading spinner for the duration of this call."""
+    if not WWEX_SMALL_PARCEL_ENABLED:
+        abort(404)
+
+    sid = _get_sid()
+    if not sid:
+        return jsonify(error='Session expired — refresh the page.'), 400
+
+    upload_dir = UPLOAD_DIR / sid
+    staged_path = next(iter(upload_dir.glob('wwex_raw.*')), None)
+    if not staged_path:
+        return jsonify(error='No WWEX file staged for this session.'), 400
+
+    master_path = _find_master_carrier_file()
+    if not master_path:
+        staged_path.unlink(missing_ok=True)
+        return jsonify(error='Carrier Import File not found in the Iris shared folder.'), 400
+
+    try:
+        with _master_lock:
+            stats = append_wwex_raw_to_master(staged_path, master_path)
+    except Exception as e:
+        return jsonify(error=str(e)), 400
+    finally:
+        staged_path.unlink(missing_ok=True)
+
+    return jsonify(**stats)
 
 
 @app.route('/upload-carrier', methods=['POST'])
@@ -239,15 +308,9 @@ def carrier_auto():
     if not sid:
         return jsonify(ok=False), 400
 
-    xlsx_files = []
-    if CARRIER_SOURCE_DIR.exists():
-        xlsx_files = [f for f in CARRIER_SOURCE_DIR.glob('*.xlsx')
-                      if f.name.startswith('Carrier Import File') and not f.name.startswith('~$')]
-
-    if not xlsx_files:
+    source = _find_master_carrier_file()
+    if not source:
         return jsonify(found=False)
-
-    source = xlsx_files[0]
 
     # Dated audit snapshot (overwrites same-day copy if re-opened)
     stamp      = date.today().strftime('%m.%d.%y')
@@ -277,6 +340,12 @@ def carrier_auto():
         return jsonify(found=True, error=validation_msg), 400
 
     analysis = analyze_carrier_file(carrier_path)
+    if analysis['missing_message']:
+        carrier_path.unlink(missing_ok=True)
+        stored_hashes.pop('carrier', None)
+        _hashes[sid] = stored_hashes
+        return jsonify(found=True, error=analysis['missing_message'], blocking=True), 400
+
     _start_acumatica_fetch(sid)
 
     return jsonify(

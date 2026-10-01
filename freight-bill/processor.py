@@ -2,10 +2,11 @@ import io
 import re
 import pandas as pd
 import requests
+from copy import copy
 from requests.auth import HTTPBasicAuth
 from datetime import datetime
 from pathlib import Path
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
@@ -27,6 +28,10 @@ CARRIER_VENDOR_IDS = {
     'Saia':       'V100471', 'Seko':    'V100472', 'WWEX': 'V100989',
 }
 
+# Master switch for the WWEX (Small Parcel) raw-file ingestion feature.
+# Not needed yet — flip to True to re-enable without touching anything else.
+WWEX_SMALL_PARCEL_ENABLED = False
+
 NEGATIVE_AMOUNT_CONFIG = {
     'WWEX': {
         'account': '320180',
@@ -34,6 +39,16 @@ NEGATIVE_AMOUNT_CONFIG = {
         'doc_description': 'Freight Claims Revenue',
     }
 }
+
+# Small-parcel fee lines auto-inserted from the raw WWEX file (see
+# append_wwex_raw_to_master) always post to this GL/Subaccount instead of the
+# normal customer lookup — these are carrier-generated fees, not shipments.
+WWEX_FEE_CONFIG = {
+    'account':     '410160',
+    'subaccount':  'DIS-000000-000000-0000000000',
+}
+WWEX_FEE_DESCRIPTIONS = {'WEEKLY SERVICE CHARGE', 'INVOICE PROCESSING FEE'}
+WWEX_FEE_NOTE_PREFIX = 'AUTO-FEE:'
 
 SUBACCOUNTS = {
     'Default':                       'SAL-DEALER-000000-0000000000',
@@ -99,6 +114,14 @@ def safe_date(val):
         return pd.Timestamp(val)
     except Exception:
         return pd.Timestamp.now()
+
+def is_missing_date(val):
+    """True when a date cell is blank or unparseable. pd.Timestamp(None/NaN)
+    returns NaT rather than raising, so a plain try/except never catches it."""
+    try:
+        return pd.isna(pd.Timestamp(val))
+    except Exception:
+        return True
 
 def safe_amount(val):
     try:
@@ -492,6 +515,211 @@ def validate_pacejet_file(pj_path, is_csv):
     return False, 'Wrong file — "ShipmentUserField3" column not found. Upload the PaceJet BulkExport file.'
 
 
+# ==============================================================================
+# WWEX RAW FILE INGESTION — append mapped Pending rows to the master workbook
+# ==============================================================================
+
+_WWEX_RAW_REQUIRED_KEYWORDS = {
+    'Invoice Date':      ['invoice date'],
+    'Ship date':         ['ship date'],
+    'Vendor Reference 2': ['vendor reference 2'],
+    'Charge Total':      ['charge total'],
+    'Invoice #':         ['invoice #'],
+}
+
+def _norm_header(v):
+    return ' '.join(str(v).split()).strip().lower() if v is not None else ''
+
+def validate_wwex_raw_file(raw_path):
+    """Returns (is_valid, error)."""
+    try:
+        df_head = pd.read_excel(str(raw_path), nrows=3)
+    except Exception as e:
+        return False, f'Unable to read file — {e}'
+
+    missing = [label for label, kws in _WWEX_RAW_REQUIRED_KEYWORDS.items()
+               if not find_col(df_head, kws)]
+    if missing:
+        return False, f'Wrong format — required columns missing: {", ".join(missing)}.'
+    return True, None
+
+
+def _wwex_raw_key(pro_ref, po_sos, doc_date, amount):
+    return (pro_ref, po_sos, safe_date_only(doc_date), amount)
+
+
+def append_wwex_raw_to_master(raw_path, master_path, sheet_name='WWEX'):
+    """Maps a raw WWEX carrier export into the master Carrier Import File's
+    WWEX tab and appends new Pending rows after the last existing row.
+    Returns {'added', 'skipped_duplicates', 'fee_rows_added'}."""
+    if not WWEX_SMALL_PARCEL_ENABLED:
+        raise ValueError('WWEX (Small Parcel) feature is currently disabled.')
+
+    df = pd.read_excel(str(raw_path))
+
+    col_invdate    = find_col(df, ['invoice date'])
+    col_shipdate   = find_col(df, ['ship date'])
+    col_vendorref  = find_col(df, ['vendor reference 2'])
+    col_amount     = find_col(df, ['charge total'])
+    col_invoicenum = find_col(df, ['invoice #'])
+    col_billref1   = find_col(df, ['billing reference 1'])
+    charge_type_cols = [c for c in df.columns if _norm_header(c).startswith('charge type')]
+
+    if not all([col_invdate, col_shipdate, col_vendorref, col_amount, col_invoicenum]):
+        raise ValueError('WWEX raw file missing required columns.')
+
+    upload_stamp = f'Upload Freight Bill Processor Tool {datetime.now().strftime("%m/%d/%Y - %H:%M")}'
+
+    mapped_rows = []
+    for _, row in df.iterrows():
+        fee_desc = None
+        for ct_col in charge_type_cols:
+            val = _norm_header(row.get(ct_col, '')).upper()
+            if val in WWEX_FEE_DESCRIPTIONS:
+                fee_desc = val
+                break
+        is_fee = fee_desc is not None
+
+        invoicenum = safe_str(row.get(col_invoicenum, ''))
+        tracking   = safe_str(row.get(col_vendorref, ''))
+        # PO/SOS and BOL both carry the tracking number (Vendor Reference 2) —
+        # it's what the reconciliation cascade in process_freight_bills matches
+        # against Acumatica's shipment tracking numbers. Falls back to the
+        # invoice # on fee lines, which have no tracking number of their own.
+        po_sos_bol = tracking or invoicenum
+        pro_number = safe_str(row.get(col_billref1, '')) if col_billref1 else ''
+
+        mapped_rows.append({
+            'carrier_date_of_file': safe_date(row.get(col_invdate)),
+            'doc_date':             safe_date(row.get(col_shipdate)),
+            'pro_vendor_ref':       invoicenum,
+            'po_sos':               po_sos_bol,
+            'bol':                  po_sos_bol,
+            'pro_number':           pro_number,
+            'amount':               safe_amount(row.get(col_amount, 0)),
+            'notes':                f'{WWEX_FEE_NOTE_PREFIX}{fee_desc}' if is_fee else '',
+            'is_fee':               is_fee,
+            'addtl_notes':          upload_stamp,
+        })
+
+    try:
+        wb = load_workbook(str(master_path))
+    except PermissionError:
+        raise ValueError('Carrier Import File está abierto en Excel — cerralo e intentá de nuevo.')
+
+    ws = next((wb[s] for s in wb.sheetnames if s.strip().lower() == sheet_name.lower()), None)
+    if ws is None:
+        raise ValueError(f'Sheet "{sheet_name}" not found in master workbook.')
+
+    header_idx = {_norm_header(c.value): c.column for c in ws[1] if c.value}
+    required_headers = ['carrier date of file', 'doc date', 'pro number / vendor ref',
+                         'open amount', 'import amount', 'po / sos', 'pro number', 'bol', 'notes',
+                         'status (pending or imported)', 'quote amount', 'variance']
+    missing_headers = [h for h in required_headers if h not in header_idx]
+    if missing_headers:
+        raise ValueError(f'Master WWEX tab missing expected columns: {", ".join(missing_headers)}.')
+
+    col_carrier_date = header_idx['carrier date of file']
+    col_doc_date     = header_idx['doc date']
+    col_pro_ref      = header_idx['pro number / vendor ref']
+    col_open_amt     = header_idx['open amount']
+    col_import_amt   = header_idx['import amount']
+    col_po_sos       = header_idx['po / sos']
+    col_pro_number   = header_idx['pro number']
+    col_bol          = header_idx['bol']
+    col_notes        = header_idx['notes']
+    col_status       = header_idx['status (pending or imported)']
+    col_quote_amt    = header_idx['quote amount']
+    col_variance     = header_idx['variance']
+    # Optional — only written when the master tab actually has this column
+    # (distinct from "Addtil Notes for Edilson", which is never touched).
+    col_addtl_notes  = header_idx.get('additional notes')
+
+    # Template row to clone formatting from (number format, font, alignment,
+    # fill, border) — appended rows must look identical to existing ones, not
+    # fall back to openpyxl's blank "General" default styling. Read the most
+    # recent existing Pending row rather than assuming row 2: Pending rows
+    # carry their own highlighting (e.g. Doc Date / Pro number-Vendor Ref in
+    # yellow) that an old Imported row doesn't have.
+    template_row = None
+    for r in range(ws.max_row, 1, -1):
+        if safe_str(ws.cell(row=r, column=col_status).value).lower() == 'pending':
+            template_row = r
+            break
+    if template_row is None and ws.max_row >= 2:
+        template_row = ws.max_row
+    max_col = ws.max_column
+
+    existing_keys = set()
+    for r in range(2, ws.max_row + 1):
+        existing_keys.add(_wwex_raw_key(
+            safe_str(ws.cell(row=r, column=col_pro_ref).value),
+            safe_str(ws.cell(row=r, column=col_po_sos).value),
+            ws.cell(row=r, column=col_doc_date).value,
+            safe_amount(ws.cell(row=r, column=col_import_amt).value),
+        ))
+
+    added = skipped = fee_rows_added = 0
+    next_row = ws.max_row + 1
+
+    for mr in mapped_rows:
+        key = _wwex_raw_key(mr['pro_vendor_ref'], mr['po_sos'], mr['doc_date'], mr['amount'])
+        if key in existing_keys:
+            skipped += 1
+            continue
+        existing_keys.add(key)
+
+        if template_row:
+            for c in range(1, max_col + 1):
+                src = ws.cell(row=template_row, column=c)
+                dst = ws.cell(row=next_row, column=c)
+                dst.number_format = src.number_format
+                dst.font          = copy(src.font)
+                dst.alignment     = copy(src.alignment)
+                dst.fill          = copy(src.fill)
+                dst.border        = copy(src.border)
+
+        # Doc Date, Pro number/Vendor Ref, Import Amount, PO/SOS always get
+        # yellow fill + black font — fixed regardless of the template row.
+        for c in (col_doc_date, col_pro_ref, col_import_amt, col_po_sos):
+            cell = ws.cell(row=next_row, column=c)
+            base = cell.font
+            cell.font = Font(name=base.name, size=base.size, bold=base.bold,
+                              italic=base.italic, color='FF000000')
+            cell.fill = PatternFill(fill_type='solid', fgColor='FFFFFF00')
+
+        ws.cell(row=next_row, column=col_carrier_date, value=mr['carrier_date_of_file'])
+        ws.cell(row=next_row, column=col_doc_date,     value=mr['doc_date'])
+        ws.cell(row=next_row, column=col_pro_ref,      value=mr['pro_vendor_ref'])
+        ws.cell(row=next_row, column=col_open_amt,     value=mr['amount'])
+        ws.cell(row=next_row, column=col_import_amt,   value=mr['amount'])
+        ws.cell(row=next_row, column=col_po_sos,       value=mr['po_sos'])
+        ws.cell(row=next_row, column=col_pro_number,   value=mr['pro_number'])
+        ws.cell(row=next_row, column=col_bol,          value=mr['bol'])
+        ws.cell(row=next_row, column=col_quote_amt,    value=0)
+        ws.cell(row=next_row, column=col_variance,     value=0)
+        ws.cell(row=next_row, column=col_notes,        value=mr['notes'])
+        ws.cell(row=next_row, column=col_status,       value='Pending')
+
+        if col_addtl_notes:
+            existing_note = safe_str(ws.cell(row=next_row, column=col_addtl_notes).value)
+            new_note = f'{existing_note} {mr["addtl_notes"]}'.strip() if existing_note else mr['addtl_notes']
+            ws.cell(row=next_row, column=col_addtl_notes, value=new_note)
+
+        next_row += 1
+        added += 1
+        if mr['is_fee']:
+            fee_rows_added += 1
+
+    if added:
+        try:
+            wb.save(str(master_path))
+        except PermissionError:
+            raise ValueError('Carrier Import File está abierto en Excel — cerralo e intentá de nuevo.')
+
+    return {'added': added, 'skipped_duplicates': skipped, 'fee_rows_added': fee_rows_added}
+
+
 def _vectorized_amount(df, col):
     """Parse an amount column to float Series without Python-level loops."""
     return pd.to_numeric(
@@ -502,12 +730,14 @@ def _vectorized_amount(df, col):
 
 def analyze_carrier_file(carrier_path):
     """Single read of the carrier file. Returns:
-      {summary: {total, carriers:[{name,count}]}, needs_priority1: bool}
+      {summary: {total, carriers:[{name,count}]}, needs_priority1: bool,
+       missing_cells: [(sheet, column, excel_row)], missing_message: str|None}
     Replaces the separate get_carrier_summary + check_needs_priority1 calls."""
     sheets = pd.read_excel(_to_bytes(carrier_path), sheet_name=None)
     result        = []
     total         = 0
     needs_p1      = False
+    missing_cells = []
 
     for sheet_name, df in sheets.items():
         carrier = next((c for c in CARRIER_VENDOR_IDS if c.lower() in sheet_name.lower()), None)
@@ -516,6 +746,7 @@ def analyze_carrier_file(carrier_path):
 
         col_status = find_col(df, ['pending', 'imported', 'status'])
         col_amount = find_col(df, ['import amount'])
+        col_date   = find_col(df, ['doc date'])
 
         if col_status and col_amount:
             is_pending = df[col_status].astype(str).str.strip().str.lower() == 'pending'
@@ -525,9 +756,20 @@ def analyze_carrier_file(carrier_path):
             mask  = is_pending & has_amount
             count = int(mask.sum())
         elif col_status:
-            count = int((df[col_status].astype(str).str.strip().str.lower() == 'pending').sum())
+            mask  = df[col_status].astype(str).str.strip().str.lower() == 'pending'
+            count = int(mask.sum())
         else:
-            count = int(len(df.dropna(how='all')))
+            mask  = df.notna().any(axis=1)
+            count = int(mask.sum())
+
+        # Same blank-Doc-Date check process_freight_bills enforces, run here so
+        # the user is told at upload time instead of after the whole pipeline.
+        if col_date is not None:
+            missing_cells.extend(
+                (sheet_name, str(col_date), int(idx) + 2)
+                for idx in df.index[mask]
+                if is_missing_date(df.at[idx, col_date])
+            )
 
         if count > 0:
             result.append({'name': carrier, 'count': count})
@@ -538,6 +780,8 @@ def analyze_carrier_file(carrier_path):
     return {
         'summary':         {'total': total, 'carriers': result},
         'needs_priority1': needs_p1,
+        'missing_cells':   missing_cells,
+        'missing_message': _missing_cells_message(missing_cells) if missing_cells else None,
     }
 
 
@@ -569,6 +813,12 @@ def classify_file(file_path, filename):
         cols = [str(c).strip() for c in df_head.columns]
         cols_lower = [c.lower() for c in cols]
 
+        # WWEX (Small Parcel) raw export — checked before PaceJet/Priority 1
+        # since its own "Invoice #" / "Airbill #" columns would otherwise
+        # misfire those checks. Disabled via WWEX_SMALL_PARCEL_ENABLED.
+        if WWEX_SMALL_PARCEL_ENABLED and {'airbill #', 'scac', 'charge type 1'} <= set(cols_lower):
+            return 'wwex_raw', None
+
         # PaceJet: many Shipment* columns
         if (sum(1 for c in cols if c.startswith('Shipment')) > 5
                 or any('shipmentuserfield3' in c for c in cols_lower)):
@@ -589,6 +839,35 @@ def classify_file(file_path, filename):
 # MAIN PROCESSING
 # ==============================================================================
 
+def _missing_cells_message(cells, max_rows_listed=6):
+    """Builds the error-toast text for required cells left blank in the master
+    workbook. Rows are grouped per sheet+column so a run of blanks reads as
+    'rows 417, 418, 419' instead of three separate clauses. Format is
+    'Title — detail' so the front-end toast splits it into heading and body."""
+    groups = {}
+    for sheet, col, row in cells:
+        groups.setdefault((sheet, col), []).append(row)
+
+    def _rows(rows):
+        shown = ', '.join(str(r) for r in rows[:max_rows_listed])
+        if len(rows) > max_rows_listed:
+            shown += f' and {len(rows) - max_rows_listed} more'
+        return f'{"row" if len(rows) == 1 else "rows"} {shown}'
+
+    total   = len(cells)
+    closing = 'Fill it in and try again.' if total == 1 else 'Fill them in and try again.'
+
+    # Single sheet+column reads as a plain sentence; several get a count and a
+    # semicolon-separated list, same shape as the other upload errors.
+    if len(groups) == 1:
+        (sheet, col), rows = next(iter(groups.items()))
+        return f'Missing data — "{col}" is empty in the {sheet} sheet, {_rows(rows)}. {closing}'
+
+    parts = [f'"{col}" in {sheet} {_rows(rows)}' for (sheet, col), rows in groups.items()]
+    return (f'Missing data — {total} required cells are empty: '
+            f'{"; ".join(parts)}. {closing}')
+
+
 def process_freight_bills(carrier_path, priority1_df, pacejet_df, shipments_df, output_dir):
     all_sheets = pd.read_excel(str(carrier_path), sheet_name=None)
 
@@ -607,6 +886,9 @@ def process_freight_bills(carrier_path, priority1_df, pacejet_df, shipments_df, 
     counter_debit = 1
     now           = pd.Timestamp.now().strftime('%m-%d-%Y')
     wwex_stats    = {'bills': 0, 'debits': 0}
+    # (sheet, column, excel_row) for required cells left blank in the master
+    # workbook. Never defaulted — the run stops and the user fills them in.
+    missing_cells = []
 
     for sheet_name, df in all_sheets.items():
         matched_carrier = next(
@@ -625,6 +907,7 @@ def process_freight_bills(carrier_path, priority1_df, pacejet_df, shipments_df, 
         col_amount = find_col(df, ['import amount'])
         col_po     = find_col(df, ['po / sos', 'po/', 'sos'])
         col_status = find_col(df, ['pending', 'imported', 'status'])
+        col_notes  = find_col(df, ['notes']) if matched_carrier == 'WWEX' else None
 
         if not all([col_date, col_pro, col_amount]):
             continue
@@ -638,7 +921,18 @@ def process_freight_bills(carrier_path, priority1_df, pacejet_df, shipments_df, 
         has_amount     = (parsed_amounts != 0) if supports_negative else (parsed_amounts > 0)
         pending        = df[is_pending & has_amount].copy()
 
-        for _, row in pending.iterrows():
+        # Doc Date drives Document Date and Post Period — there is no sane
+        # default, so blanks are collected and reported instead of guessed.
+        # +2 converts the 0-based DataFrame index to the Excel row number
+        # (row 1 is the header).
+        blank_dates = {idx for idx in pending.index
+                       if is_missing_date(pending.at[idx, col_date])}
+        missing_cells.extend((sheet_name, str(col_date), int(idx) + 2)
+                             for idx in sorted(blank_dates))
+
+        for idx, row in pending.iterrows():
+            if idx in blank_dates:
+                continue
             pronumber  = safe_str(row.get(col_pro,    ''))
             po_sos     = safe_str(row.get(col_po,     '')) if col_po else ''
             doc_date   = safe_date(row.get(col_date,  now))
@@ -648,6 +942,11 @@ def process_freight_bills(carrier_path, priority1_df, pacejet_df, shipments_df, 
             customer_name = ''
             is_anomalous  = False
             case          = ''
+
+            wwex_fee_notes = (safe_str(row.get(col_notes, ''))
+                              if matched_carrier == 'WWEX' and col_notes else '')
+            is_wwex_fee = wwex_fee_notes.startswith(WWEX_FEE_NOTE_PREFIX)
+            line_desc = po_sos
 
             # ------------------------------------------------------------------
             # PRIORITY 1 — 4-step cascading lookup (mirrors base.py exactly)
@@ -697,6 +996,15 @@ def process_freight_bills(carrier_path, priority1_df, pacejet_df, shipments_df, 
                     customer_name = match['CustomerName']
 
             # ------------------------------------------------------------------
+            # WWEX small-parcel fee lines (auto-inserted by append_wwex_raw_to_master)
+            # — carrier-generated fees, not shipments, so they skip the customer
+            # lookup entirely and post to their own fixed GL/Subaccount.
+            # ------------------------------------------------------------------
+            elif is_wwex_fee:
+                case = 'Fee'
+                line_desc = wwex_fee_notes[len(WWEX_FEE_NOTE_PREFIX):].title()
+
+            # ------------------------------------------------------------------
             # ALL OTHER CARRIERS — generic cascade
             # ------------------------------------------------------------------
             else:
@@ -717,7 +1025,9 @@ def process_freight_bills(carrier_path, priority1_df, pacejet_df, shipments_df, 
                 else:
                     is_anomalous, case = True, 'Review'
 
-            subaccount = SUBACCOUNTS.get(customer, DEFAULT_SUBACCOUNT) if customer else ''
+            account    = WWEX_FEE_CONFIG['account']    if is_wwex_fee else ACCOUNT
+            subaccount = (WWEX_FEE_CONFIG['subaccount'] if is_wwex_fee
+                          else (SUBACCOUNTS.get(customer, DEFAULT_SUBACCOUNT) if customer else ''))
 
             if supports_negative and amount < 0:
                 all_debit_adj.append(
@@ -740,11 +1050,11 @@ def process_freight_bills(carrier_path, priority1_df, pacejet_df, shipments_df, 
                     'Vendor Ref.': pronumber,
                     'Branch': 'MAIN',
                     'Line Branch': 'MAIN',
-                    'Line Description': po_sos,
+                    'Line Description': line_desc,
                     'Quantity': 1,
                     'Unit Cost': amount,
                     'Amount': amount,
-                    'Account': ACCOUNT,
+                    'Account': account,
                     'Sub': customer_name,
                     'Subaccount': subaccount,
                     'Ap received Bills date ': now,
@@ -755,6 +1065,9 @@ def process_freight_bills(carrier_path, priority1_df, pacejet_df, shipments_df, 
                 counter += 1
                 if matched_carrier == 'WWEX':
                     wwex_stats['bills'] += 1
+
+    if missing_cells:
+        raise ValueError(_missing_cells_message(missing_cells))
 
     if not all_bills and not all_debit_adj:
         raise ValueError('No pending invoices found in the carrier file.')
