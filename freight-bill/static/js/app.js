@@ -88,7 +88,7 @@
     .then(data => {
       if (!data.found) {
         pCarrier.classList.remove('loading');
-        showError('Carrier file not found — upload manually.');
+        showError('Carrier File Not Found — upload manually.');
         return;
       }
       if (data.error) { pCarrier.classList.remove('loading'); showError(data.error, data.blocking, data.blocking); return; }
@@ -138,7 +138,7 @@
     hideError();
     const ext = file.name.toLowerCase();
     if (!ext.endsWith('.xlsx') && !ext.endsWith('.csv') && !ext.endsWith('.xls')) {
-      showError('Invalid file type — only .xlsx, .xls and .csv files are accepted.'); resolve(); return;
+      showError('Invalid File Type — only .xlsx, .xls and .csv files are accepted.'); resolve(); return;
     }
     setUploading(true, 'Analyzing file…');
     const fd = new FormData();
@@ -202,7 +202,7 @@
         // are imported from the Small Parcels screen only.
         resolve();
       })
-      .catch(() => { setUploading(false); showError('Connection error — could not reach the server. Please try again.'); resolve(); });
+      .catch(() => { setUploading(false); showError('Connection Error — could not reach the server. Please try again.'); resolve(); });
     }); // end Promise
   }
 
@@ -274,7 +274,7 @@
         if (missing) dropzone.classList.remove('disabled');
         updateHint();
       })
-      .catch(() => showError('Connection error — could not remove the file. Please try again.'));
+      .catch(() => showError('Connection Error — could not remove the file. Please try again.'));
   }
 
   document.querySelectorAll('[data-remove]').forEach(btn =>
@@ -409,7 +409,7 @@
           startResetCountdown();
         });
       })
-      .catch(() => landRun(() => { _run = null; stopMsgCycle(); showScreen('upload'); showError('Processing error — please try again.'); }));
+      .catch(() => landRun(() => { _run = null; stopMsgCycle(); showScreen('upload'); showError('Processing Error — please try again.'); }));
   }
 
   // ── Toast timer ───────────────────────────────────────────────
@@ -883,7 +883,7 @@
       })
       .catch(() => {
         pMasterP.classList.remove('loading');
-        showError('Connection error — could not check the Small Parcels workbook.');
+        showError('Connection Error — could not check the Small Parcels workbook.');
       });
   }
 
@@ -1258,7 +1258,7 @@
     hideError();
     const name = file.name.toLowerCase();
     if (!/\.(xlsx|xls|csv|pdf)$/.test(name)) {
-      showError('Invalid file type — only .xlsx, .xls, .csv and .pdf files are accepted.');
+      showError('Invalid File Type — only .xlsx, .xls, .csv and .pdf files are accepted.');
       _parcelAborted = true;
       return;
     }
@@ -1320,7 +1320,7 @@
 
         const kind = PARCEL_KINDS[data.type];
         if (!kind) {
-          showError('Wrong file — this screen only accepts the WWEX raw export, '
+          showError('Wrong File — this screen only accepts the WWEX raw export, '
                     + 'a FedEx invoice PDF, or the Small Parcels workbook.');
           _parcelAborted = true;
           return;
@@ -1358,7 +1358,7 @@
         pWWEXp.classList.remove('loading');
         pFedexP.classList.remove('loading');
         _parcelAborted = true;
-        showError('Connection error — could not reach the server. Please try again.');
+        showError('Connection Error — could not reach the server. Please try again.');
       });
   }
 
