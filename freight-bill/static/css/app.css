@@ -1,0 +1,871 @@
+/* Freight Bill Processor — app styles.
+   Moved out of templates/index.html (2026-10-01). Family rules and tokens:
+   C:\Publish\SWCORP\swcorp-app-family (CLAUDE.md, css/). Colors and fonts come
+   from swcorp-tokens.css, loaded before this file. */
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* Text for screen readers only (the odometer's figure, state words). */
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+
+/* Keyboard first (family rule): every control is reachable with Tab and shows
+   where focus is; mouse clicks show nothing (:focus-visible). White on navy. */
+:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; border-radius: 4px; }
+#screen-processing :focus-visible, #screen-complete :focus-visible { outline-color: var(--white); }
+/* Screens take focus when they open; the screen itself draws no ring. */
+#screen-upload:focus, #screen-parcels:focus, #screen-processing:focus,
+#screen-results:focus, #screen-complete:focus { outline: none; }
+
+:root {
+  /* Colors, type, shape: swcorp-tokens.css (family). Only app-local values here. */
+  --sat: env(safe-area-inset-top,    0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left,   0px);
+  --sar: env(safe-area-inset-right,  0px);
+}
+
+/* ── ROOT SHELL ──────────────────────────────────────── */
+html {
+  height: 100dvh;
+  overflow: hidden;
+}
+body {
+  font-family: "Geist", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  font-optical-sizing: auto;
+
+  -webkit-font-smoothing: antialiased;
+  color: var(--ink);   /* family: text ink, titles navy */
+  background: var(--white);
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-top:    var(--sat);
+  padding-bottom: var(--sab);
+  padding-left:   var(--sal);
+  padding-right:  var(--sar);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ── APP FRAME ───────────────────────────────────────── */
+.app-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background: var(--white);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── HEADER ──────────────────────────────────────────── */
+/* Family layout (= Lowe's Invoice Reconciler .hdr): navy 56px, logo ·
+   divider · app name on the left, only the menu button on the right. No
+   z-index here: the menu button has to stack above the side menu, which
+   covers this header when open. */
+.header {
+  background: var(--navy); color: var(--white);
+  display: flex; align-items: center; gap: 20px;
+  height: 56px; padding: 0 24px; flex-shrink: 0;
+  position: relative;
+}
+.header-logo-img { height: 26px; width: auto; display: block; flex: none; }
+.header-home {
+  flex: none; display: block; border-radius: 4px;
+  transition: opacity .15s ease, transform var(--dur-press) var(--ease-out);
+}
+.header-home:active { transform: scale(.97); }
+@media (hover: hover) and (pointer: fine) { .header-home:hover { opacity: .85; } }
+.header-sep { width: 1px; height: 24px; background: rgba(255,255,255,.28); flex: none; }
+.header-title {
+  font-size: 15px; font-weight: 600; letter-spacing: -.005em; color: var(--white);
+  min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.header-grow { flex: 1; }
+/* Inside Acumatica its screen title already names the app (and so does the
+   page title): the header keeps only the logo and the menu button. */
+html.embedded .header-sep, html.embedded .header-title { display: none; }
+/* The open menu covers the header's right corner, and every layer there is
+   cut by the window's rounded corner: each one's soft edge lets a little of
+   the layer below through, so the header's navy tinted the corner under the
+   white panel (measured: 217,223,227 instead of white). While the panel
+   covers that corner, the header pulls its own corner in (rounder, so it
+   paints nothing in the curve's soft edge). The switch happens only under
+   the panel — 100ms after opening (the circle already covers the corner) and
+   370ms after closing starts (just before the shrinking circle uncovers it) —
+   so the window's outline never visibly changes. */
+.header { transition: border-top-right-radius 0s linear 370ms; }
+body.menu-open .header { border-top-right-radius: 32px; transition-delay: 100ms; }
+.header :focus-visible { outline: 2px solid var(--white); outline-offset: 2px; }
+
+/* ── MENU BUTTON + SIDE MENU ─────────────────────────── */
+/* motion.dev "variants", in CSS. The white disc behind the menu button IS
+   the menu: the side menu is a white panel the full height of the window
+   (over the header too), clipped to a 36px circle centred on the button.
+   Opening grows that circle until it fills the panel (drawer curve), then
+   the rows rise in, 60ms apart; the top and bottom lines of the button bend
+   into an X while the middle one fades. Closing is the reverse and quicker:
+   rows drop away at once, then the circle shrinks back into the disc. */
+.menu-toggle {
+  position: relative; z-index: 41;   /* above the open menu */
+  flex: none; display: grid; place-items: center;
+  width: 36px; height: 36px; margin-right: -6px; border-radius: 50%;
+  color: var(--white); background: none; border: 0; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  /* Closing: the lines stay navy while the circle shrinks over them, then turn white. */
+  transition: transform var(--dur-press) var(--ease-out), color 160ms ease 460ms;
+}
+body.menu-open .menu-toggle { color: var(--navy); transition: transform var(--dur-press) var(--ease-out), color 120ms ease; }
+.menu-toggle:active { transform: scale(.94); }
+.menu-toggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; overflow: visible; }
+/* Lines become the X by moving their ends (CSS d), like the original. */
+.menu-toggle .l1 { d: path("M4 6.5 L20 6.5"); }
+.menu-toggle .l2 { d: path("M4 12 L20 12"); }
+.menu-toggle .l3 { d: path("M4 17.5 L20 17.5"); }
+.menu-toggle path { transition: d 320ms var(--ease-in-out), opacity 160ms ease; }
+body.menu-open .menu-toggle .l1 { d: path("M6 18 L18 6"); }
+body.menu-open .menu-toggle .l2 { opacity: 0; }
+body.menu-open .menu-toggle .l3 { d: path("M6 6 L18 18"); }
+body.menu-open .menu-toggle path { transition: d 320ms var(--ease-in-out), opacity 120ms ease; }
+.menu-toggle:focus-visible { outline: 2px solid var(--white); outline-offset: 3px; }
+body.menu-open .menu-toggle:focus-visible { outline-color: var(--navy); }
+
+.side-menu {
+  --cx: calc(100% - 36px); --cy: 28px;          /* the button's centre (JS measures it) */
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 40;
+  width: min(320px, 100%); padding: 76px 14px 24px; overflow-y: auto;
+  display: flex; flex-direction: column;
+  background: var(--surface);
+  clip-path: circle(0px at var(--cx) var(--cy));
+  transition: clip-path 420ms var(--ease-in-out) 140ms;
+}
+.side-menu.open {
+  clip-path: circle(var(--menu-r, 1200px) at var(--cx) var(--cy));
+  /* No shadow: its navy blur reached the window's rounded corner and tinted
+     it; the dimmed scrim already sets the panel apart. */
+  transition: clip-path 640ms cubic-bezier(.32, .72, 0, 1);
+}
+/* Picking an entry: the menu closes at once and fast (body.menu-quick). */
+body.menu-quick .side-menu { transition: clip-path 220ms cubic-bezier(.23, 1, .32, 1); }
+body.menu-quick .menu-anim { transition: opacity 80ms ease; transition-delay: 0ms; }
+body.menu-quick .menu-scrim { transition: opacity 160ms ease, visibility 0s linear 160ms; }
+body.menu-quick .menu-toggle { transition: transform var(--dur-press) var(--ease-out), color 120ms ease 120ms; }
+/* corner back while the shrinking circle still covers it (r 75px at ~97ms, measured) */
+body.menu-quick .header { transition: border-top-right-radius 0s linear 90ms; }
+
+/* The rest of the window dims a little while the menu is open; a click there
+   closes it. It stops where the panel starts: under the panel it would only
+   tint the window's rounded corner through the curve's soft edge. */
+.menu-scrim {
+  position: absolute; top: 0; left: 0; bottom: 0; right: min(320px, 100%); z-index: 39;
+  background: rgba(21,46,69,.18); opacity: 0; visibility: hidden;
+  transition: opacity 240ms ease, visibility 0s linear 240ms;
+}
+.menu-scrim.open { opacity: 1; visibility: visible; transition: opacity 240ms ease, visibility 0s; }
+
+.menu-anim { opacity: 0; transform: translateY(24px); transition: opacity 120ms ease, transform 160ms var(--ease-out); }
+.side-menu.open .menu-anim {
+  opacity: 1; transform: none;
+  transition: opacity 320ms var(--ease-out), transform 420ms var(--ease-out);
+  transition-delay: calc(180ms + var(--i, 0) * 60ms);
+}
+/* The entries sit centred in the panel's free height (top margin keeps them
+   clear of the button). */
+.menu-body { position: relative; margin: auto 0; }
+/* Pointer glide: one soft highlight slides to the entry under the mouse and
+   fades when the pointer leaves the list: it shows where the click lands,
+   and moving between entries reads as one surface. Mouse only. */
+.menu-glide {
+  position: absolute; left: 0; right: 0; top: 0; height: 0;
+  border-radius: 10px; background: var(--surface-2);
+  opacity: 0; pointer-events: none;
+  transition: transform 240ms var(--ease-out), opacity 160ms ease;
+}
+.menu-glide.on { opacity: 1; }
+.menu-list { list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.menu-item {
+  position: relative;   /* over the glide */
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 9px 10px; border: 0; border-radius: 10px; background: none;
+  font: inherit; text-align: left; text-decoration: none; color: var(--ink); cursor: pointer;
+  transition: background-color .15s ease, transform var(--dur-press) var(--ease-out);
+}
+.menu-item:active { transform: scale(.98); }
+.menu-item:focus-visible { outline: 2px solid var(--navy); outline-offset: -2px; }
+/* Each entry carries its destination's own mark (bill, parcel, SharePoint),
+   painted in navy through a mask so the menu keeps one colour; the current
+   view inverts it to white on a navy tile. */
+.menu-ic {
+  flex: none; display: grid; place-items: center; width: 34px; height: 34px;
+  border: 1.5px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--navy);
+  transition: background-color .2s ease, border-color .2s ease, color .2s ease;
+}
+.menu-logo {
+  width: 18px; height: 18px; background: currentColor;
+  -webkit-mask: var(--logo) center / contain no-repeat; mask: var(--logo) center / contain no-repeat;
+}
+.menu-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; font-weight: 600; line-height: 1.3; }
+.menu-t small { font-size: 12px; font-weight: 400; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu-ext { flex: none; width: 14px; height: 14px; fill: none; stroke: var(--ink-3); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.menu-item[aria-current] { background: var(--navy-50); }
+.menu-item[aria-current] .menu-t { color: var(--navy); }
+.menu-item[aria-current] .menu-ic { background: var(--navy); border-color: var(--navy); color: var(--white); }
+@media (hover: hover) and (pointer: fine) {
+  .menu-toggle:hover { transform: scale(1.06); }
+  .menu-item:not([aria-current]):hover .menu-ic { border-color: var(--navy); }
+}
+
+/* ── APP BODY ────────────────────────────────────────── */
+.app-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--white);
+  position: relative;
+}
+
+/* ── UPLOAD SCREEN ───────────────────────────────────── */
+#screen-upload,
+#screen-parcels,
+#screen-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+/* Gutters by family tier (swcorp-app-family, "Responsive"), the same space
+   under the pills as above the title: phone 20/16 · compact 24/24 ·
+   desktop 28/32 · short window 18/24. Title block -> zone -> pills 20px
+   apart (10px when very short). */
+@media (min-width: 600px)  { #screen-upload, #screen-parcels, #screen-results { padding: 24px; } }
+@media (min-width: 1181px) { #screen-upload, #screen-parcels, #screen-results { padding: 28px 32px; } }
+@media (min-width: 600px) and (max-height: 820px) {
+  #screen-upload, #screen-parcels, #screen-results { padding: 18px 24px; }
+}
+@media (max-height: 720px) {
+  #screen-upload, #screen-parcels { gap: 10px; }
+}
+
+/* ── SMALL PARCELS SCREEN ────────────────────────────── */
+#screen-parcels        { display: none; }
+#screen-parcels.active { display: flex; }
+#screen-parcels.active.just-entered {
+  animation: scr-enter var(--dur-enter) var(--ease-out) forwards;
+}
+/* Going back to Freight Bill: parcels exits, upload slides in — mirrors the way in */
+#screen-parcels.active.leaving {
+  animation: scr-exit var(--dur-exit) var(--ease-out) forwards;
+  pointer-events: none;
+}
+#screen-upload.re-entering {
+  animation: scr-enter var(--dur-enter) var(--ease-out) forwards;
+}
+
+/* Page title + subtitle: family type scale (= LIR .titlebar). Title 20/800,
+   line-height 1.45, -.01em; 18px on phones. Subtitle one line, 13px/1.65
+   ink-3, 4px under the title. */
+.page-title {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.45;
+  letter-spacing: -.01em;
+  color: var(--navy);
+  text-wrap: balance;
+}
+.page-subtitle {
+  font-size: 13px;
+  color: var(--ink-3);
+  line-height: 1.65;
+  margin-top: 4px;
+  max-width: 80ch;
+  text-wrap: pretty;
+}
+@media (max-width: 599px) { .page-title { font-size: 18px; } }
+
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20%     { transform: translateX(-6px); }
+  40%     { transform: translateX(6px); }
+  60%     { transform: translateX(-3px); }
+  80%     { transform: translateX(3px); }
+}
+
+/* ── FIXED ERROR TOAST (top of screen, auto-dismiss) ──── */
+/* ── POP-OUT BUBBLE (inside Acumatica only) ──────────── */
+/* A small round button in the bottom-right corner that opens the app in its
+   own browser tab. Nearly invisible at rest (it is a secondary way out, not
+   part of the work); it comes up under the pointer or keyboard focus. No
+   tooltip (family rule): the aria-label names it. On touch it stays at a
+   readable resting opacity. */
+.pop-out { display: none; }
+html.embedded .pop-out {
+  position: fixed; right: 14px; bottom: 14px; z-index: 70;
+  display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--navy); color: var(--white);
+  box-shadow: 0 4px 14px rgba(21,46,69,.18);
+  opacity: .22; transform: scale(.92);
+  transition: opacity .2s ease, transform var(--dur-press) var(--ease-out), box-shadow .2s ease;
+}
+html.embedded .pop-out svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+html.embedded .pop-out:hover, html.embedded .pop-out:focus-visible { opacity: 1; transform: none; box-shadow: 0 6px 18px rgba(21,46,69,.26); }
+html.embedded .pop-out:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }
+html.embedded .pop-out:active { transform: scale(.94); }
+@media (hover: none) { html.embedded .pop-out { opacity: .6; transform: none; } }
+/* Toasts sit above the bubble so they never cover it. */
+html.embedded .toast-stack { bottom: calc(14px + 32px + 10px + var(--sab)); }
+
+/* ── TOAST STACK ─────────────────────────────────────── */
+/* Family standard (as Lowe's Invoice Reconciler): every toast — errors, the
+   Additional Files Required — stacks at the bottom right,
+   outside the card, newest at the bottom. White card, 3px left edge carrying
+   the meaning (navy info, amber pending, red failure). */
+.toast-stack {
+  position: fixed; right: 16px; bottom: calc(16px + var(--sab)); z-index: 9999;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  max-width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast-stack > * { pointer-events: auto; }
+@keyframes toast-in  { from { opacity: 0; transform: translateY(calc(var(--toast-dy, 1) * 16px)) scale(.96); } }
+@keyframes toast-out { to   { opacity: 0; transform: translateY(calc(var(--toast-dy, 1) * 10px)); } }
+.err-fixed-toast,
+.notice-bar {
+  display: none; position: relative;
+  min-width: 280px; max-width: 100%;
+  background: #fff;
+  border: 1px solid var(--line); border-left: 3px solid var(--navy);
+  border-radius: 10px; overflow: hidden;
+  box-shadow: var(--shadow-pop);
+}
+.err-fixed-toast.visible,
+.notice-bar.visible { display: block; animation: toast-in var(--dur-toast) var(--ease-out); }
+.err-fixed-toast.hiding,
+.notice-bar.hiding { animation: toast-out .16s ease-out forwards; }
+/* Time left: a 2px line along the foot that empties over the toast's 6s
+   (the JS dismisses on its animationend). Paused while hovered or focused.
+   Same colour as the toast's edge; kept under reduced motion (it is
+   information, not decoration). */
+.toast-timer {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+  background: var(--navy); opacity: .55;
+  transform-origin: left center;
+  animation: toast-timer 6s linear forwards;
+}
+@keyframes toast-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.toast-stack > :hover > .toast-timer,
+.toast-stack > :focus-within > .toast-timer { animation-play-state: paused; }
+.notice-bar .toast-timer,
+.err-fixed-toast.blocking .toast-timer { background: var(--amber-stroke); }
+.notice-bar { border-left-color: var(--amber); }
+.notice-bar .err-toast-icon { stroke: var(--amber-stroke); }
+/* Each Additional Files notice belongs to its view (they used to live inside
+   the screen, so switching views hid them). */
+body.view-parcels #notice-toast,
+body:not(.view-parcels) #pz-notice-toast { display: none; }
+@media (max-width: 599px) {
+  /* Phones: toasts drop in at the top, under the header (the thumb works the
+     bottom of the screen), full width; they enter from above and leave upward. */
+  .toast-stack { left: 12px; right: 12px; top: calc(56px + 8px + var(--sat)); bottom: auto; max-width: none; align-items: stretch; z-index: 45; }
+  .toast-stack > * { --toast-dy: -1; }
+  html.embedded .toast-stack { bottom: auto; }   /* phones: still at the top */
+  .err-fixed-toast, .notice-bar { min-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .err-fixed-toast.visible, .notice-bar.visible { animation-name: fade-in; }
+  .err-fixed-toast.hiding { animation-name: fade-out; }
+}
+@keyframes fade-in  { from { opacity: 0; } }
+@keyframes fade-out { to   { opacity: 0; } }
+.err-toast-inner {
+  display: flex; align-items: flex-start; gap: 11px;
+  padding: 13px 36px 13px 14px;
+}
+.err-toast-icon {
+  flex-shrink: 0; margin-top: 1px;
+  width: 16px; height: 16px; stroke: var(--navy); fill: none;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.err-toast-body { display: flex; flex-direction: column; gap: 2px; }
+.err-toast-title {
+  font-size: 13px; font-weight: 700; color: var(--navy); letter-spacing: .1px;
+}
+.err-toast-msg {
+  font-size: 12px; color: rgba(28,61,90,.65); line-height: 1.5;
+}
+.err-toast-close {
+  position: absolute; top: 9px; right: 9px;
+  background: none; border: none; cursor: pointer;
+  color: rgba(28,61,90,.35); font-size: 15px; line-height: 1;
+  padding: 4px; border-radius: 4px;
+  transition: color .15s ease, transform var(--dur-press) var(--ease-out);
+}
+.err-toast-close:active { transform: scale(.95); }
+@media (hover: hover) and (pointer: fine) { .err-toast-close:hover { color: var(--navy); } }
+/* Paused while the tab is hidden, so a message is never missed (html.tab-hidden, app.js). */
+html.tab-hidden .toast-timer { animation-play-state: paused; }
+/* Blocking: something has to be resolved before the file can be imported.
+   Amber and closed by hand, matching the Additional Files Required notice —
+   a red flash the user can miss reads as "try again", which this is not. */
+.err-fixed-toast.blocking {
+  border-left-color: var(--amber-stroke); max-width: 460px;
+}
+.err-fixed-toast.blocking .err-toast-icon { stroke: var(--amber-stroke); }
+
+/* ── UPLOAD ZONE ─────────────────────────────────────── */
+.upload-zone {
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  min-height: 150px;
+  flex: 1 1 auto;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center; padding: 32px 24px 28px;
+  cursor: pointer; position: relative;
+  transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .upload-zone:hover { border-color: var(--navy); background: var(--surface-2); }
+  .upload-zone:hover .upload-icon { transform: translateY(-3px); }
+}
+.upload-zone.drag-over { border-color: var(--navy); background: var(--surface-2); box-shadow: 0 0 0 4px rgba(28,61,90,.08); }
+.upload-zone:focus-visible { outline: none; border-color: var(--navy); box-shadow: var(--ring-strong); }
+.upload-zone.disabled  { opacity: .45; pointer-events: none; }
+.upload-zone.uploading { border-color: var(--navy); pointer-events: none; }
+.upload-zone.accepted { animation: accepted-flash .5s var(--ease-out) forwards; }
+@keyframes accepted-flash {
+  0%   { border-color: var(--ok); background: var(--ok-bg); }
+  100% { border-color: var(--line); background: transparent; }
+}
+#file-input, #pz-file-input { display: none; }
+
+.upload-icon { margin-bottom: 14px; line-height: 0; transition: transform .2s var(--ease-out); }
+.upload-zone.uploading .upload-icon { transform: none; }
+.upload-icon svg {
+  width: 48px; height: 48px;
+  stroke: var(--navy); fill: none;
+  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+}
+.upload-prompt      { font-size: 14px; color: var(--ink); }
+.upload-prompt a    { color: var(--navy); font-weight: 600; text-decoration: none; }
+.upload-prompt a:hover { text-decoration: underline; }
+.upload-hint        { font-size: 12px; color: var(--ink-3); margin-top: 6px; max-width: 80ch; }
+/* Short windows: smaller icon, shorter zone, tighter pills (as LIR). */
+@media (max-height: 720px) {
+  .upload-zone { min-height: 120px; padding: 16px; }
+  .upload-icon { margin-bottom: 8px; }
+  .upload-icon svg { width: 36px; height: 36px; }
+}
+/* ── UPLOAD ZONE LOADING OVERLAY ────────────────────── */
+.upload-content { display: flex; flex-direction: column; align-items: center; width: 100%; }
+.upload-zone.uploading .upload-content { display: none; }
+
+.upload-loading {
+  display: none;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; width: 100%;
+}
+.upload-zone.uploading .upload-loading { display: flex; }
+
+/* Same border-arc spinner as pill-circle, scaled to 40px */
+.zone-spinner {
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 3px solid var(--line);
+  border-top-color: var(--navy);
+  animation: pill-spin .75s linear infinite;
+}
+/* ── OLD SEGMENTS (kept only if referenced elsewhere) ── */
+.zone-seg {
+  position: absolute; width: 3px; height: 10px;
+  background: rgba(28,61,90,.15); border-radius: 2px;
+  left: 50%; top: 0; transform-origin: center 20px;
+  animation: zone-seg-fade 1.2s linear infinite;
+}
+.zone-seg:nth-child(1)  { transform: rotate(0deg)   translateX(-50%); animation-delay: -1.1s; }
+.zone-seg:nth-child(2)  { transform: rotate(30deg)  translateX(-50%); animation-delay: -1.0s; }
+.zone-seg:nth-child(3)  { transform: rotate(60deg)  translateX(-50%); animation-delay: -0.9s; }
+.zone-seg:nth-child(4)  { transform: rotate(90deg)  translateX(-50%); animation-delay: -0.8s; }
+.zone-seg:nth-child(5)  { transform: rotate(120deg) translateX(-50%); animation-delay: -0.7s; }
+.zone-seg:nth-child(6)  { transform: rotate(150deg) translateX(-50%); animation-delay: -0.6s; }
+.zone-seg:nth-child(7)  { transform: rotate(180deg) translateX(-50%); animation-delay: -0.5s; }
+.zone-seg:nth-child(8)  { transform: rotate(210deg) translateX(-50%); animation-delay: -0.4s; }
+.zone-seg:nth-child(9)  { transform: rotate(240deg) translateX(-50%); animation-delay: -0.3s; }
+.zone-seg:nth-child(10) { transform: rotate(270deg) translateX(-50%); animation-delay: -0.2s; }
+.zone-seg:nth-child(11) { transform: rotate(300deg) translateX(-50%); animation-delay: -0.1s; }
+.zone-seg:nth-child(12) { transform: rotate(330deg) translateX(-50%); animation-delay:  0s;  }
+@keyframes zone-seg-fade {
+  0%   { background: rgba(28,61,90,.90); }
+  100% { background: rgba(28,61,90,.15); }
+}
+.zone-loading-text {
+  font-size: 13px; font-weight: 600; color: var(--navy); letter-spacing: .1px;
+}
+
+/* ── PILLS ───────────────────────────────────────────── */
+/* Family standard (swcorp-app-family "Input pill", same as Lowe's Invoice
+   Reconciler .slot): 70px tall, 13/16 padding, 24px ring whose check draws
+   in, 10px uppercase source over an 11px detail. The detail line links to
+   where the file comes from whenever there is a place to link to. The count
+   varies (2 to 5), so each visible pill takes an equal share of the row. */
+.pills { display: flex; gap: 12px; flex: none; }
+.pill {
+  flex: 1; min-width: 0; min-height: 70px;
+  border-radius: 10px;
+  padding: 13px 16px;
+  display: flex; align-items: center; gap: 12px;
+  border: 1.5px solid var(--line);
+  background: var(--white);
+  transition: background-color .3s cubic-bezier(.23,1,.32,1), border-color .3s cubic-bezier(.23,1,.32,1), opacity .3s, transform .3s cubic-bezier(.23,1,.32,1);
+}
+/* Pending (.active, set by the JS) looks like rest: an empty pill is enough
+   to say the file is still needed. */
+.pill.done   { background: var(--navy);   border-color: var(--navy); }
+
+/* conditional pills start hidden; .pill-show shows them. On a row that does
+   not wrap the JS slides them in and out (pill morph); on phones, where the
+   row wraps, they pop in. */
+.pill.pill-conditional { display: none; }
+.pill.pill-conditional.pill-show { display: flex; }
+@media (max-width: 599px) and (prefers-reduced-motion: no-preference) {
+  .pill.pill-conditional.pill-show { animation: pill-enter var(--dur-enter) var(--ease-out) forwards; }
+}
+@keyframes pill-enter {
+  from { opacity: 0; transform: scale(.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* A quiet confirmation, not a bounce: it plays on every file. */
+@keyframes pill-pop {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+.pill.popping { animation: pill-pop 300ms var(--ease-out); }
+
+/* Ring: grey at rest, spins while loading, white disc with a navy check
+   drawn along its path when done. */
+@keyframes pill-spin { to { transform: rotate(360deg); } }
+.pill-circle {
+  position: relative; flex: none;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--line-mid);
+  transition: background-color .24s cubic-bezier(.23,1,.32,1), border-color .24s cubic-bezier(.23,1,.32,1);
+}
+.pill-circle svg {
+  position: absolute; inset: -2px; width: 24px; height: 24px;
+  fill: none; stroke: var(--navy); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 16; stroke-dashoffset: 16;
+  transition: stroke-dashoffset .28s cubic-bezier(.23,1,.32,1) .09s;
+}
+.pill.loading .pill-circle { border-top-color: var(--navy); animation: pill-spin .75s linear infinite; }
+.pill.done .pill-circle { border-color: var(--white); background: var(--white); }
+.pill.done .pill-circle svg { stroke-dashoffset: 0; }
+
+.pill-label { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.pill-label .lbl-top {
+  font-size: 10px; font-weight: 700; line-height: 1.2;
+  text-transform: uppercase; letter-spacing: .05em;
+  color: var(--ink-3); transition: color .24s ease;
+}
+.pill-label .lbl-main {
+  font-size: 11px; font-weight: 500; line-height: 1.2;
+  color: var(--ink-3); transition: color .24s ease;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lbl-link { text-decoration: none; cursor: pointer; text-underline-offset: 2px; }
+.lbl-link:hover { text-decoration: underline; }
+.lbl-link:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; border-radius: 3px; }
+.pill.done .lbl-link:focus-visible { outline-color: var(--white); }
+.pill.done   .pill-label .lbl-top  { color: var(--white); }
+.pill.done   .pill-label .lbl-main { color: rgba(255,255,255,.72); }
+@media (max-height: 720px) { .pill { padding: 10px 12px; } }
+/* × on a loaded pill (as LIR .slot-x): takes the file back. Only on a done
+   pill, shown while the pointer is over it or it has keyboard focus (always
+   on touch). Removing un-ticks the pill: the check retracts along its path
+   and the navy fades, the same transitions that ticked it, reversed. */
+.pill-x {
+  flex: none; display: grid; place-items: center;
+  width: 26px; height: 26px; margin: -4px -6px -4px 0;
+  border: 0; border-radius: 50%; background: none; cursor: pointer;
+  color: rgba(255,255,255,.62);
+  opacity: 0; transform: scale(.9); visibility: hidden;
+  transition: opacity .12s ease-out, transform .12s var(--ease-out), background-color .15s ease, color .15s ease;
+}
+.pill-x svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.pill-x:focus-visible { outline: 2px solid var(--white); outline-offset: 1px; }
+.pill.done .pill-x { visibility: visible; }
+.pill.done:hover .pill-x,
+.pill.done .pill-x:focus-visible { opacity: 1; transform: none; }
+.pill.done .pill-x:hover { background: rgba(255,255,255,.14); color: var(--white); }
+.pill.done .pill-x:active { transform: scale(.95); }
+@media (hover: none) { .pill.done .pill-x { opacity: 1; transform: none; } }
+/* Un-ticking: the check retracts first (no delay), then the fill fades. */
+.pill:not(.done) .pill-circle svg { transition: stroke-dashoffset 140ms var(--ease-out); }
+/* Phone (family tier < 600px): two pills per row, an odd last one takes the
+   full row; shorter pills so the zone keeps its room. */
+@media (max-width: 599px) {
+  .pills { flex-wrap: wrap; gap: 10px; }
+  .pill  { flex: 1 1 calc(50% - 5px); min-height: 56px; padding: 10px 12px; gap: 10px; }
+}
+
+/* ── SCREEN TRANSITIONS ──────────────────────────────── */
+@keyframes scr-exit {
+  from { opacity: 1; transform: scale(1)       translateY(0);   }
+  to   { opacity: 0; transform: scale(.97)     translateY(-6px); }
+}
+@keyframes scr-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+@keyframes scr-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+#screen-upload.leaving {
+  animation: scr-exit var(--dur-exit) var(--ease-out) forwards;
+  pointer-events: none;
+}
+#screen-upload.entering {
+  animation: scr-fade-in 220ms var(--ease-out) forwards;
+}
+
+/* ── PROCESSING SCREEN ───────────────────────────────── */
+#screen-processing {
+  display: none;
+  flex: 1; flex-direction: column;
+  align-items: center; justify-content: center;
+  background: var(--navy);
+  padding: 40px 24px; text-align: center;
+}
+#screen-processing.active        { display: flex; }
+#screen-processing.fading-in     { animation: scr-fade-in 200ms var(--ease-out) both; }
+#screen-processing.active.just-entered {
+  animation: scr-enter var(--dur-enter) var(--ease-out) forwards;
+}
+
+.loader {
+  width: 48px; height: 48px;
+  background: #fff; border-radius: 50%;
+  margin: 0 auto 20px;
+  animation: ellipseAnimation 2s linear infinite;
+}
+@keyframes ellipseAnimation {
+  0%    { border-radius: 50%; }
+  12.5% { border-radius: 0 50% 50% 50%; transform: rotate(45deg);  }
+  25%   { border-radius: 0 0 50% 50%;   transform: rotate(90deg);  }
+  37.5% { border-radius: 0 0 0 50%;     transform: rotate(135deg); }
+  50%   { border-radius: 0;             transform: rotate(180deg); }
+  62.5% { border-radius: 50% 0 0 0;     transform: rotate(225deg); }
+  75%   { border-radius: 50% 50% 0 0;   transform: rotate(270deg); }
+  87.5% { border-radius: 50% 50% 50% 0; transform: rotate(315deg); }
+  100%  { border-radius: 50%;           transform: rotate(360deg); }
+}
+.proc-text { font-size: 15px; font-weight: 600; color: rgba(255,255,255,.80); letter-spacing: .2px; transition: opacity .3s ease, filter .3s ease; }
+/* Swapping lines: blurred while faded, so the old and new text read as one change. */
+.proc-text.swapping { opacity: 0; filter: blur(2px); }
+
+/* ── RESULTS SCREEN ──────────────────────────────────── */
+/* Lowe's Invoice Reconciler's Process totals: cards centred in the free
+   height, figures 24/600 tabular that roll up on arrival; at the foot the
+   next screen's name over the bar that counts down to it. */
+#screen-results          { display: none; }
+#screen-results.active   { display: flex; }
+#screen-results.active.just-entered { animation: scr-enter var(--dur-enter) var(--ease-out) forwards; }
+.results-body { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.results-sums { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; }
+.sum {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  min-width: 180px; padding: 18px 22px;
+  border: 1.5px solid var(--line); border-radius: 16px; background: var(--surface);
+}
+.sum.lead { border-color: var(--navy); }
+.sum { animation: sum-in 300ms var(--ease-out) both; animation-delay: calc(120ms + var(--i, 0) * 60ms); }   /* as the wipe reveals them */
+@keyframes sum-in { from { opacity: 0; transform: translateY(8px); } }
+#screen-results .advance { animation: scr-fade-in 240ms var(--ease-out) 320ms both; }
+.sum-l { font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.sum.lead .sum-l { color: var(--navy); }
+.sum-v { align-self: stretch; font: 600 24px/1.2 var(--font); letter-spacing: -.01em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.roll { display: inline-block; height: 1.2em; line-height: 1.2em; overflow: hidden; vertical-align: top; }
+.roll-strip { display: block; will-change: transform; }
+.roll-strip > i { display: block; height: 1.2em; font-style: normal; }
+.advance { flex: none; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.advance[hidden] { display: none; }
+.advance b { font-size: 12.5px; font-weight: 600; color: var(--navy); }
+.advance-bar { display: block; width: 140px; height: 3px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.advance-bar > i { display: block; height: 100%; background: var(--navy); transform-origin: left; transform: scaleX(0); }
+.results-continue {
+  flex: none; align-self: center;
+  height: 36px; padding: 0 16px; border-radius: 8px;
+  border: 1.5px solid var(--navy); background: var(--navy); color: var(--white);
+  font: 600 13px var(--font); cursor: pointer;
+  transition: background-color .15s ease, transform .16s var(--ease-out);
+}
+.results-continue[hidden] { display: none; }
+@media (hover: hover) and (pointer: fine) { .results-continue:hover { background: var(--navy-dark); } }
+.results-continue:active { transform: scale(.97); }
+.results-continue:focus-visible { outline: none; box-shadow: var(--ring-strong); }
+@media (max-width: 599px) { .sum { min-width: 0; flex: 1 1 calc(50% - 8px); } .results-sums { gap: 10px; } }
+
+/* ── COMPLETE SCREEN ─────────────────────────────────── */
+#screen-complete {
+  display: none;
+  flex: 1; flex-direction: column;
+  align-items: center; justify-content: center;
+  background: var(--navy);
+  padding: 40px 24px; text-align: center;
+  position: relative;
+}
+#screen-complete.active             { display: flex; }
+#screen-complete.active.just-entered {
+  animation: scr-fade-in 240ms var(--ease-out) forwards;
+}
+
+.check-outer {
+  width: 88px; height: 88px;
+  background: rgba(255,255,255,.12); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 24px;
+  animation: outer-pop .5s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes outer-pop {
+  from { transform: scale(.7); opacity: 0; }
+  to   { transform: scale(1);  opacity: 1; }
+}
+.check-inner {
+  width: 60px; height: 60px; background: var(--white); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.check-inner svg { width: 28px; height: 28px; overflow: visible; }
+.check-inner svg path {
+  stroke: var(--navy); fill: none;
+  stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 30; stroke-dashoffset: 30;
+  animation: draw-check .45s .3s cubic-bezier(.22,1,.36,1) forwards;
+}
+@keyframes draw-check { to { stroke-dashoffset: 0; } }
+.comp-title {
+  font-size: clamp(20px, 2.5vw, 24px); font-weight: 700;
+  color: var(--white); letter-spacing: -.3px; margin-bottom: 6px;
+  animation: fade-up .36s .2s var(--ease-out) both;
+}
+.comp-records {
+  font-size: 13px; font-weight: 600; color: rgba(255,255,255,.55);
+  margin-bottom: 24px; animation: fade-up .36s .28s var(--ease-out) both;
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.comp-divider { width: 36px; height: 1px; background: rgba(255,255,255,.18); margin: 0 auto 18px; animation: fade-up .36s .35s var(--ease-out) both; }
+.comp-note    { font-size: 12px; color: rgba(255,255,255,.40); line-height: 1.75; animation: fade-up .36s .42s var(--ease-out) both; }
+.comp-folder-link { color: rgba(255,255,255,.75); text-decoration: underline; text-underline-offset: 2px; transition: color .15s ease; }
+.comp-close-btn {
+  position: absolute; top: 14px; right: 14px;
+  background: none; border: none; cursor: pointer;
+  color: rgba(255,255,255,.35); font-size: 18px; line-height: 1;
+  padding: 6px; border-radius: 6px;
+  transition: color .2s ease, background-color .2s ease, transform var(--dur-press) var(--ease-out);
+}
+.comp-close-btn:active { transform: scale(.95); }
+/* Bills are handed over as buttons rather than automatic downloads —
+   browsers block every automatic download after the first. */
+.comp-dl-list {
+  display: flex; flex-direction: column; gap: 8px;
+  max-width: 340px; margin: 16px auto 0;
+  animation: fade-up .36s .46s var(--ease-out) both;
+}
+.comp-dl-list:empty { display: none; }
+.comp-dl-btn {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 10px 12px; cursor: pointer;
+  font-family: inherit; font-size: 12px; font-weight: 600; text-align: left;
+  color: var(--white); background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.18); border-radius: 8px;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform var(--dur-press) var(--ease-out);
+}
+.comp-dl-btn:active { transform: scale(.97); }
+.comp-dl-btn svg   { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; flex-shrink: 0; }
+.comp-dl-btn .comp-dl-sub { margin-left: auto; font-weight: 500; color: rgba(255,255,255,.45); }
+.comp-dl-btn.done { color: rgba(255,255,255,.45); background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.10); }
+.comp-dl-btn.all  { background: var(--white); color: var(--navy); border-color: var(--white); }
+.comp-countdown { font-size: 11px; color: rgba(255,255,255,.25); margin-top: 18px; animation: fade-up .36s .5s var(--ease-out) both; }
+@media (hover: hover) and (pointer: fine) {
+  .comp-folder-link:hover { color: #fff; }
+  .comp-close-btn:hover { color: #fff; background: rgba(255,255,255,.1); }
+  .comp-dl-btn:hover { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.35); }
+  .comp-dl-btn.all:hover { background: rgba(255,255,255,.88); }
+}
+
+/* ── RESPONSIVE ──────────────────────────────────────── */
+
+/* Desktop: same pattern as ScanShip — centered floating card */
+@media (min-width: 768px) {
+  body {
+    background: var(--white);
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* Desktop: centered floating card, SWCorp standard (same as Lowe's Invoice
+   Reconciler). It fills the viewport minus a gap that scales with the
+   screen, up to 1480×920. Below 1180×720 the card is too small: the frame
+   fills the viewport, no edge or shadow (rules above). */
+@media (min-width: 1180px) and (min-height: 720px) {
+  body {
+    --gap: clamp(20px, 4vmin, 48px);
+    padding: var(--gap);
+  }
+  .app-frame {
+    width: min(1480px, 100%);
+    height: min(920px, calc(100dvh - 2 * var(--gap)));
+    flex: none;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+  }
+  .app-body {
+    border-bottom-left-radius: 20px;
+    border-bottom-right-radius: 20px;
+  }
+}
+
+/* ── REDUCED MOTION ──────────────────────────────────── */
+/* Fewer and gentler, not zero: anything that moves becomes a short fade;
+   opacity and colour changes stay (they explain state). Loaders keep their
+   speed — they only say "working". */
+@media (prefers-reduced-motion: reduce) {
+  #screen-parcels.active.just-entered, #screen-upload.re-entering,
+  #screen-processing.active.just-entered, #screen-results.active.just-entered,
+  .sum, .check-outer, .comp-title, .comp-records, .comp-divider, .comp-note,
+  .comp-dl-list, .comp-countdown { animation-name: scr-fade-in; animation-duration: 180ms; }
+  #screen-upload.leaving, #screen-parcels.active.leaving { animation-name: fade-out; animation-duration: 150ms; }
+  .pill.popping { animation: none; }
+  .upload-zone:hover .upload-icon { transform: none; }
+  .menu-toggle:active, .menu-item:active, .err-toast-close:active,
+  .comp-close-btn:active, .comp-dl-btn:active, .results-continue:active, .pill-x:active { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The menu opens at once (no growing circle); its rows fade in. */
+  .side-menu, .side-menu.open { transition: none; }
+  .menu-anim, .side-menu.open .menu-anim { transform: none; transition: opacity 150ms ease; transition-delay: 0ms; }
+  .menu-toggle path, body.menu-open .menu-toggle path { transition: none; }
+  .menu-toggle:hover { transform: none; }
+  .menu-glide { transition: opacity 150ms ease; }
+}
+/* Phones: tighter header, the menu takes the whole width under it. */
+@media (max-width: 599px) {
+  .header { gap: 12px; padding: 0 16px; }
+  .header-logo-img { height: 22px; }
+  .header-title { font-size: 14px; }
+  .side-menu { width: 100%; }
+}
+

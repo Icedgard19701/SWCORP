@@ -14,6 +14,17 @@ env/
 uploads/
 output/
 logs/*.log*
+# Uploads kept for diagnosis when an import refused to run — real invoices
+logs/blocked/
+# Real carrier invoice PDFs used as the parser regression corpus
+FEDEX_PDF/
+# Real business data, never in this public repo: carrier invoices dropped
+# here for testing, the regression figures taken from real FedEx invoices,
+# and the run notes that quote real invoice numbers.
+*.xls
+*.xlsx
+tests/fedex_expected.json
+Small-Parcels-Subaccount-Matching.md
 
 # Credentials and secrets (stored outside the repo in ~/.swcorp/)
 .env

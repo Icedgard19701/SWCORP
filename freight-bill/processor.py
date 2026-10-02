@@ -2,10 +2,13 @@ import io
 import re
 import pandas as pd
 import requests
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from copy import copy
 from requests.auth import HTTPBasicAuth
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote_plus
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
@@ -28,9 +31,10 @@ CARRIER_VENDOR_IDS = {
     'Saia':       'V100471', 'Seko':    'V100472', 'WWEX': 'V100989',
 }
 
-# Master switch for the WWEX (Small Parcel) raw-file ingestion feature.
-# Not needed yet — flip to True to re-enable without touching anything else.
-WWEX_SMALL_PARCEL_ENABLED = False
+# Master switch for the Small Parcels ingestion feature (WWEX raw export and
+# FedEx invoice PDF). Flip to False to disable both without touching anything
+# else — the Small Parcels routes then return 404.
+SMALL_PARCEL_ENABLED = True
 
 NEGATIVE_AMOUNT_CONFIG = {
     'WWEX': {
@@ -49,6 +53,43 @@ WWEX_FEE_CONFIG = {
 }
 WWEX_FEE_DESCRIPTIONS = {'WEEKLY SERVICE CHARGE', 'INVOICE PROCESSING FEE'}
 WWEX_FEE_NOTE_PREFIX = 'AUTO-FEE:'
+
+# Notes written into the flat carrier tabs carry a machine-readable head (the
+# fee prefix, the FedEx invoice number) followed by the upload stamp. Readers
+# split on this separator instead of consuming the whole cell.
+NOTE_SEPARATOR = ' | '
+
+# FedEx invoice PDFs print a form code right after the "P.O.#:" label when the
+# shipment has no purchase order. Real POs on these invoices run 6-17 chars, so
+# anything outside that range is treated as noise rather than a PO.
+FEDEX_PO_NOISE_TOKENS = {'177'}
+FEDEX_PO_MIN_LENGTH = 6
+FEDEX_PO_MAX_LENGTH = 17
+
+class BlockingImportError(ValueError):
+    """An import that stopped for a reason the user has to resolve — a charge
+    the parser cannot account for, a workbook it must not write to. Separate
+    from a plain ValueError so the web layer can mark it blocking and the
+    browser can hold the message on screen until it is dismissed by hand,
+    rather than flashing it for a few seconds and leaving no trace."""
+
+
+# A parsed FedEx invoice must add up to the total printed on the invoice itself
+# before anything is written to the master workbook.
+FEDEX_TOTAL_TOLERANCE = 0.01
+
+# FedEx charges that belong to the account rather than to any one shipment
+# (a scheduled-pickup fee, a late fee on an earlier invoice) skip the customer
+# lookup and post to their own fixed GL/Subaccount. Deliberately its own config
+# rather than a reuse of WWEX_FEE_CONFIG: the two carriers bill different kinds
+# of fee and must stay free to be routed differently.
+FEDEX_FEE_CONFIG = {
+    'account':    '410160',
+    'subaccount': 'DIS-000000-000000-0000000000',
+}
+
+_MASTER_OPEN_ERROR = ('Carrier Import File is open in Excel — '
+                      'close it and try again.')
 
 SUBACCOUNTS = {
     'Default':                       'SAL-DEALER-000000-0000000000',
@@ -162,18 +203,25 @@ def normalize_carrier_name(carrier_raw):
 # ==============================================================================
 
 def build_shipments_lookups(shipments_df):
-    """Returns (ordernbr_lookup, shipmentnbr_lookup, tracking_lookup).
-    Each maps key -> {Customer, CustomerName, OrderNbr}."""
+    """Returns (ordernbr_lookup, shipmentnbr_lookup, tracking_lookup,
+    custorder_lookup). Each maps key -> {Customer, CustomerName, OrderNbr}.
+
+    custorder_lookup is keyed on Acumatica's CustomerOrderNbr — the customer's
+    own PO, which is what the carriers print in their reference fields. A PO is
+    only unique per customer, so keys claimed by more than one customer are
+    dropped rather than resolved to whichever shipment came first."""
     ordernbr_lookup    = {}
     shipmentnbr_lookup = {}
     tracking_lookup    = {}
+    custorder_lookup   = {}
 
     if shipments_df.empty:
-        return ordernbr_lookup, shipmentnbr_lookup, tracking_lookup
+        return ordernbr_lookup, shipmentnbr_lookup, tracking_lookup, custorder_lookup
 
     col_order    = find_col(shipments_df, ['ordernbr', 'order nbr'])
     col_shipment = find_col(shipments_df, ['shipmentnbr', 'shipment nbr'])
     col_tracking = find_col(shipments_df, ['trackingnumber', 'tracking number'])
+    col_custorder = find_col(shipments_df, ['customerordernbr', 'customer order nbr'])
     col_custname = find_col(shipments_df, ['customername', 'customer name'])
     col_customer = next(
         (col for col in shipments_df.columns if str(col).strip().lower() == 'customer'),
@@ -190,19 +238,33 @@ def build_shipments_lookups(shipments_df):
         if not col: return [''] * len(shipments_df)
         return shipments_df[col].fillna('').astype(str).str.strip().tolist()
 
-    orders    = _key_col(col_order)
-    shipments = _key_col(col_shipment)
-    trackings = _key_col(col_tracking)
-    customers = _str_col(col_customer)
-    custnames = _str_col(col_custname)
+    orders     = _key_col(col_order)
+    shipments  = _key_col(col_shipment)
+    trackings  = _key_col(col_tracking)
+    custorders = _key_col(col_custorder)
+    customers  = _str_col(col_customer)
+    custnames  = _str_col(col_custname)
 
-    for o, s, t, c, n in zip(orders, shipments, trackings, customers, custnames):
+    # A customer PO repeats across that customer's own shipments, so the first
+    # one wins as everywhere else; only a PO claimed by two different customers
+    # is ambiguous, and those keys are removed below.
+    custorder_owners: dict = {}
+
+    for o, s, t, p, c, n in zip(orders, shipments, trackings, custorders,
+                                customers, custnames):
         cust_data = {'Customer': c, 'CustomerName': n, 'OrderNbr': o}
         if o and o not in ordernbr_lookup:    ordernbr_lookup[o]    = cust_data
         if s and s not in shipmentnbr_lookup: shipmentnbr_lookup[s] = cust_data
         if t and t not in tracking_lookup:    tracking_lookup[t]    = cust_data
+        if p:
+            custorder_owners.setdefault(p, set()).add(c)
+            if p not in custorder_lookup:     custorder_lookup[p]   = cust_data
 
-    return ordernbr_lookup, shipmentnbr_lookup, tracking_lookup
+    for p, owners in custorder_owners.items():
+        if len(owners) > 1:
+            custorder_lookup.pop(p, None)
+
+    return ordernbr_lookup, shipmentnbr_lookup, tracking_lookup, custorder_lookup
 
 
 def build_p1_lookup(p1_df):
@@ -318,6 +380,44 @@ def build_pacejet_records(pacejet_df):
     return records, amount_index
 
 
+def build_pacejet_parcel_bridge(pacejet_df):
+    """Maps parcel tracking number -> PaceJet shipment control number.
+
+    Small-parcel invoices carry a tracking number and, at best, the customer's
+    PO. When neither is in Acumatica, PaceJet still knows the shipment it
+    rated: its control number is what Acumatica stores as ShipmentNbr, so the
+    tracking number resolves to a customer through PaceJet even though the
+    carrier never printed an Acumatica reference.
+
+    Both tracking columns are indexed — they hold the same value on
+    single-package shipments and differ on multi-package ones, where the carrier
+    bills each package under its own number."""
+    if pacejet_df is None or pacejet_df.empty:
+        return {}
+
+    col_pkg_track = find_col(pacejet_df, ['shipmentpackagetrackingid', 'packagetrackingid'])
+    col_track     = find_col(pacejet_df, ['shipmenttrackingid', 'trackingid'])
+    # ShipmentUserField1 mirrors ShipmentControlNumber in the BulkExport; either
+    # one is the value Acumatica knows.
+    col_control   = (find_col(pacejet_df, ['shipmentcontrolnumber', 'controlnumber'])
+                     or find_col(pacejet_df, ['shipmentuserfield1']))
+    if not col_control or not (col_pkg_track or col_track):
+        return {}
+
+    def _col(col):
+        if not col: return [''] * len(pacejet_df)
+        return pacejet_df[col].apply(safe_str).tolist()
+
+    bridge = {}
+    for pkg, trk, ctl in zip(_col(col_pkg_track), _col(col_track), _col(col_control)):
+        if not ctl:
+            continue
+        for key in (pkg, trk):
+            if key and key not in bridge:
+                bridge[key] = ctl
+    return bridge
+
+
 def find_pacejet_match(amount, carrier_raw, carrier_mode, actual_ship_date,
                        pacejet_records, amount_index):
     """Returns user_field3 using the amount_index for O(1) candidate filtering."""
@@ -370,12 +470,17 @@ def _build_debit_adj_row(carrier_name, counter, doc_date, vendor_id,
     }
 
 
-def _write_formatted_excel(output_path, export_df, anomalous_flags, debit_positions):
+def _write_formatted_excel(output_path, export_df, anomalous_flags, debit_positions,
+                           notice_flags=None):
+    """notice_flags marks rows that are complete but were filled in by a weaker
+    rule than the rest — worth a second look without being an error, so they get
+    a neutral grey rather than the red of a row that is actually missing data."""
     SP_HEADERS = {'Sub', 'Invoice Number', 'Carrier', 'Case'}
     hdr_fill    = PatternFill(fill_type='solid', fgColor='00375C')
     hdr_fill_sp = PatternFill(fill_type='solid', fgColor='0062A4')
     anom_fill   = PatternFill(fill_type='solid', fgColor='FD9091')
     debit_fill  = PatternFill(fill_type='solid', fgColor='C9E6FF')
+    notice_fill = PatternFill(fill_type='solid', fgColor='F2F2F2')
     hdr_font    = Font(name='Aptos Narrow', size=10, bold=True, color='FFFFFF')
     dat_font    = Font(name='Aptos Narrow', size=10)
 
@@ -392,9 +497,13 @@ def _write_formatted_excel(output_path, export_df, anomalous_flags, debit_positi
 
     debit_set = set(debit_positions)
     for r, (_, drow) in enumerate(export_df.iterrows()):
-        is_anom  = anomalous_flags[r]
-        is_debit = r in debit_set
-        row_fill = debit_fill if is_debit else (anom_fill if is_anom else None)
+        is_anom   = anomalous_flags[r]
+        is_debit  = r in debit_set
+        is_notice = bool(notice_flags[r]) if notice_flags else False
+        row_fill = (debit_fill if is_debit
+                    else anom_fill if is_anom
+                    else notice_fill if is_notice
+                    else None)
         for c, val in enumerate(drow, 1):
             cell = ws.cell(row=r + 2, column=c, value=val)
             cell.font = dat_font
@@ -417,25 +526,185 @@ def _write_formatted_excel(output_path, export_df, anomalous_flags, debit_positi
 # ACUMATICA FETCH
 # ==============================================================================
 
-def fetch_acumatica_shipments(username, password, base_url):
-    table   = 'ShipmentsSubAc - JJ'
-    encoded = table.replace(' ', '%20')
-    url     = f'{base_url}/{encoded}'
-    all_rows = []
-    while url:
-        resp = requests.get(
-            url,
-            auth=HTTPBasicAuth(username, password),
-            headers={'Accept': 'application/json'},
-            timeout=60,
-        )
-        if resp.status_code == 401:
-            raise ValueError('Acumatica 401: credenciales incorrectas.')
-        resp.raise_for_status()
-        data = resp.json()
-        all_rows.extend(data.get('value', []))
-        url = data.get('@odata.nextLink')
-    return pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
+# A slow or dropped request is retried before the lookup gives up.
+ACUMATICA_PAGE_ATTEMPTS = 3
+
+
+# ------------------------------------------------------------------------------
+# Filtered lookup (same pattern as Lowe's Invoice Reconciler, recon/odata.py).
+#
+# The full inquiry is ~150k rows and took minutes; a run only ever looks rows up
+# by a handful of keys, so the inquiry is asked with $filter for the values of
+# the files in hand: `Field eq 'v1' or Field eq 'v2' ...`, one field per
+# request, in batches that keep the URL under Acumatica's limit, a few batches
+# side by side. The rows that come back have the same columns as the full
+# download, so build_shipments_lookups and every cascade read them unchanged.
+# ------------------------------------------------------------------------------
+
+ACUMATICA_SHIPMENTS_GI   = 'ShipmentsSubAc - JJ'
+# Columns the lookups read (build_shipments_lookups). Asking only these keeps
+# each answer small.
+ACUMATICA_SHIPMENT_COLS  = ('OrderNbr', 'ShipmentNbr', 'TrackingNumber',
+                            'CustomerOrderNbr', 'Customer', 'CustomerName')
+ACUMATICA_LOOKUP_FIELDS  = ('TrackingNumber', 'OrderNbr', 'ShipmentNbr', 'CustomerOrderNbr')
+# Acumatica's IIS answers a bare 404 past ~2048 URL characters (measured in
+# LIR on 2026-09-29: 1802 passes, 2195 fails); keep a margin.
+ACUMATICA_MAX_URL        = 1900
+ACUMATICA_LOOKUP_THREADS = 4
+ACUMATICA_LOOKUP_TIMEOUT = 60
+
+
+def _shipments_gi_url(base_url):
+    return f"{base_url.rstrip('/')}/{ACUMATICA_SHIPMENTS_GI.replace(' ', '%20')}"
+
+
+def _acumatica_get(url, params, username, password, timeout):
+    """GET with the page retry of the full fetch; 401 reads as bad credentials."""
+    for attempt in range(1, ACUMATICA_PAGE_ATTEMPTS + 1):
+        try:
+            resp = requests.get(url, params=params,
+                                auth=HTTPBasicAuth(username, password),
+                                headers={'Accept': 'application/json'},
+                                timeout=timeout)
+            break
+        except requests.RequestException as e:
+            if attempt == ACUMATICA_PAGE_ATTEMPTS:
+                raise ValueError(f'Acumatica did not answer after '
+                                 f'{ACUMATICA_PAGE_ATTEMPTS} attempts: {e}') from e
+    if resp.status_code == 401:
+        raise ValueError('Acumatica 401: wrong credentials.')
+    resp.raise_for_status()
+    return resp.json()
+
+
+def probe_acumatica(username, password, base_url):
+    """Raises unless Acumatica answers: one row of the shipments inquiry. The
+    page asks this on arrival, so the Acumatica pill shows the connection
+    before any file is in; the rows themselves are asked with the files."""
+    _acumatica_get(_shipments_gi_url(base_url),
+                   {'$top': 1, '$select': 'OrderNbr', '$format': 'json'},
+                   username, password, ACUMATICA_LOOKUP_TIMEOUT)
+
+
+def _filter_batches(field_values, base_len):
+    """`$filter` expressions, one field each, as many values as fit the URL."""
+    joiner = len(quote_plus(' or '))
+    for field in ACUMATICA_LOOKUP_FIELDS:
+        batch, used = [], base_len
+        for value in sorted(field_values.get(field, ())):
+            literal = str(value).replace("'", "''")
+            term = f"{field} eq '{literal}'"
+            cost = len(quote_plus(term)) + joiner
+            if batch and used + cost > ACUMATICA_MAX_URL:
+                yield ' or '.join(batch)
+                batch, used = [], base_len
+            batch.append(term)
+            used += cost
+        if batch:
+            yield ' or '.join(batch)
+
+
+def fetch_acumatica_shipments_matching(username, password, base_url, field_values):
+    """Shipments rows whose field equals any of its values.
+
+    field_values: {GI field: iterable of values}. Acumatica compares
+    case-insensitively. Returns a DataFrame with ACUMATICA_SHIPMENT_COLS; rows
+    matched through more than one field come back once, in the order the
+    batches were asked."""
+    wanted = {f: {safe_str(v) for v in field_values.get(f, ())} - {''}
+              for f in ACUMATICA_LOOKUP_FIELDS}
+    url    = _shipments_gi_url(base_url)
+    params = {'$select': ','.join(ACUMATICA_SHIPMENT_COLS), '$format': 'json'}
+    base_len = (len(requests.Request('GET', url, params=params).prepare().url)
+                + len('&%24filter='))
+    filters = list(_filter_batches(wanted, base_len))
+    if not filters:
+        return pd.DataFrame(columns=list(ACUMATICA_SHIPMENT_COLS))
+
+    def ask(expr):
+        rows, next_url, p = [], url, dict(params, **{'$filter': expr})
+        while next_url:
+            data = _acumatica_get(next_url, p, username, password, ACUMATICA_LOOKUP_TIMEOUT)
+            rows.extend(data.get('value', []))
+            # A server link already carries the paging state.
+            next_url, p = data.get('@odata.nextLink') or data.get('odata.nextLink'), None
+        return rows
+
+    with ThreadPoolExecutor(max_workers=ACUMATICA_LOOKUP_THREADS,
+                            thread_name_prefix='acu-lookup') as pool:
+        found = [r for batch in pool.map(ask, filters) for r in batch]
+    df = pd.DataFrame(found, columns=list(ACUMATICA_SHIPMENT_COLS))
+    return df.drop_duplicates(ignore_index=True)
+
+
+def freight_lookup_values(carrier_path, priority1_df, pacejet_df):
+    """Every value process_freight_bills can look up in Acumatica, by GI field.
+
+    Mirrors its cascade (a superset: every value a branch might ask, whichever
+    branch ends up deciding), so the filtered rows answer exactly what the full
+    inquiry would have."""
+    want = {f: set() for f in ACUMATICA_LOOKUP_FIELDS}
+    if not carrier_path or not Path(carrier_path).exists():
+        return want
+    p1_lookup = (build_p1_lookup(priority1_df)
+                 if priority1_df is not None and not priority1_df.empty else {})
+    pacejet_records, pacejet_amount_index = (
+        build_pacejet_records(pacejet_df)
+        if pacejet_df is not None and not pacejet_df.empty else ([], {}))
+    all_sheets = pd.read_excel(str(carrier_path), sheet_name=None)
+    for sheet_name, df in all_sheets.items():
+        if is_detail_sheet(sheet_name):
+            continue
+        carrier = next((c for c in CARRIER_VENDOR_IDS if c.lower() in sheet_name.lower()), None)
+        if not carrier:
+            continue
+        col_pro    = find_col(df, ['pronumber', 'pro number', 'vendor ref'])
+        col_po     = find_col(df, ['po / sos', 'po/', 'sos'])
+        col_status = find_col(df, ['pending', 'imported', 'status'])
+        if not col_pro:
+            continue
+        if col_status:
+            df = df[df[col_status].astype(str).str.strip().str.lower() == 'pending']
+        for _, row in df.iterrows():
+            pro = safe_str(row.get(col_pro, ''))
+            po  = safe_str(row.get(col_po, '')) if col_po else ''
+            if carrier == 'Priority 1':
+                p1d = p1_lookup.get(pro, {})
+                want['TrackingNumber'].update((p1d.get('PRO', ''), p1d.get('BOL', '')))
+                want['OrderNbr'].add(p1d.get('SO', ''))
+                if pacejet_records and p1d:
+                    uf3 = find_pacejet_match(p1d.get('RemainingBalance', 0.0), p1d.get('Carrier', ''),
+                                             p1d.get('CarrierMode', ''), p1d.get('ActualShip'),
+                                             pacejet_records, pacejet_amount_index)
+                    want['OrderNbr'].add(uf3 or '')
+                continue
+            want['TrackingNumber'].add(pro)
+            for key in (po, pro):
+                want['OrderNbr'].add(key)
+                want['ShipmentNbr'].add(key)
+                want['CustomerOrderNbr'].add(key)
+    return {f: v - {''} for f, v in want.items()}
+
+
+def small_parcel_lookup_values(rows, pacejet_df=None):
+    """Every value _sp_import_subaccount can look up in Acumatica, by GI field."""
+    want = {f: set() for f in ACUMATICA_LOOKUP_FIELDS}
+    bridge = build_pacejet_parcel_bridge(pacejet_df)
+    for row in rows:
+        if row.get('is_fee'):
+            continue
+        tracking, po = row.get('pro_vendor_ref') or '', row.get('po_sos') or ''
+        want['TrackingNumber'].add(tracking)
+        for key in (po, tracking):
+            want['OrderNbr'].add(key)
+            want['ShipmentNbr'].add(key)
+            want['CustomerOrderNbr'].add(key)
+        control = bridge.get(tracking) if tracking else None
+        if control:
+            want['ShipmentNbr'].add(control)
+            want['OrderNbr'].add(control)
+    return {f: {safe_str(x) for x in v} - {''} for f, v in want.items()}
+
 
 # ==============================================================================
 # VALIDATION & PRE-CHECKS
@@ -516,7 +785,7 @@ def validate_pacejet_file(pj_path, is_csv):
 
 
 # ==============================================================================
-# WWEX RAW FILE INGESTION — append mapped Pending rows to the master workbook
+# SMALL PARCELS INGESTION — append mapped Pending rows to the master workbook
 # ==============================================================================
 
 _WWEX_RAW_REQUIRED_KEYWORDS = {
@@ -529,6 +798,20 @@ _WWEX_RAW_REQUIRED_KEYWORDS = {
 
 def _norm_header(v):
     return ' '.join(str(v).split()).strip().lower() if v is not None else ''
+
+
+def _upload_stamp():
+    """Trace stamp written into the Notes column of every appended row, so the
+    AP team can tell which rows this tool added and when."""
+    return f'Upload Freight Bill Processor Tool {datetime.now().strftime("%m/%d/%Y - %H:%M")}'
+
+def is_detail_sheet(sheet_name):
+    """True for the "<Carrier> - SP" tabs of the Small Parcels workbook. Those
+    are the AP team's reconciliation detail; the flat "<Carrier>" tab is the
+    import feed. Both carry the carrier name, so reading both would bill every
+    small-parcel row twice."""
+    return _norm_header(sheet_name).endswith('- sp')
+
 
 def validate_wwex_raw_file(raw_path):
     """Returns (is_valid, error)."""
@@ -544,16 +827,305 @@ def validate_wwex_raw_file(raw_path):
     return True, None
 
 
-def _wwex_raw_key(pro_ref, po_sos, doc_date, amount):
+def _carrier_tab_row_key(pro_ref, po_sos, doc_date, amount):
+    """Dedupe identity of a row in a flat carrier tab. Re-uploading the same
+    carrier file must not duplicate rows that are already there."""
     return (pro_ref, po_sos, safe_date_only(doc_date), amount)
 
 
+def _extend_table_ranges(ws, last_row):
+    """Grow every Excel Table defined on the sheet down to last_row. The flat
+    carrier tabs are real Tables, so appended rows land outside the table (no
+    banding, excluded from structured references) unless the ref is widened."""
+    for tbl in (getattr(ws, 'tables', None) or {}).values():
+        start, end = tbl.ref.split(':')
+        m = re.match(r'([A-Z]+)(\d+)$', end)
+        if not m or last_row <= int(m.group(2)):
+            continue
+        tbl.ref = f'{start}:{m.group(1)}{last_row}'
+        if tbl.autoFilter is not None:
+            tbl.autoFilter.ref = tbl.ref
+
+
+# Raised when the rows are gone from the workbook the moment it is read back.
+# Phrased for the AP user, not the developer: the fix is always at their end.
+_MASTER_LOST_ROWS_ERROR = (
+    'The workbook did not keep the appended rows — {lost} of {total} were '
+    'already gone when "{name}" was read back straight after saving. Excel or '
+    'OneDrive is holding another copy of it and overwrote the write. Close the '
+    'workbook everywhere (other machines and Excel Online included), wait for '
+    'OneDrive to finish syncing, then import the file again. No bill was '
+    'generated for these rows.'
+)
+
+
+def _verify_carrier_rows_persisted(master_path, sheet_name, written):
+    """Re-reads the workbook straight after the save and confirms the appended
+    rows are really in it.
+
+    A OneDrive-synced workbook open in Excel with AutoSave on is not locked on
+    disk: openpyxl saves over it without raising, and Excel later writes back
+    the copy it still holds in memory, silently discarding every appended row.
+    A save that returns cleanly is therefore not evidence the rows landed — the
+    only honest check is reading the file back. Raises ValueError when rows are
+    missing so the caller fails loudly instead of reporting a clean import.
+
+    Catches the loss only when it has already happened by the time this runs.
+    Excel can still overwrite the file minutes later, which nothing inside this
+    process can see; the guard for that is _excel_lock_files upstream, and it is
+    not complete either."""
+    if not written:
+        return
+
+    try:
+        wb = load_workbook(str(master_path))
+    except Exception as e:
+        raise ValueError(f'The rows were written but "{Path(master_path).name}" '
+                         f'could not be read back to confirm they landed — {e}')
+
+    try:
+        ws = next((wb[s] for s in wb.sheetnames
+                   if s.strip().lower() == sheet_name.lower()), None)
+        if ws is None:
+            raise ValueError(_MASTER_LOST_ROWS_ERROR.format(
+                lost=len(written), total=len(written), name=Path(master_path).name))
+
+        header_idx = {_norm_header(c.value): c.column for c in ws[1] if c.value}
+        col_pro_ref    = header_idx.get('pro number / vendor ref')
+        col_import_amt = header_idx.get('import amount')
+        # Shape was validated before the append, so a column missing here means
+        # the sheet came back as something else entirely — treated as total loss
+        # rather than quietly passing.
+        if not (col_pro_ref and col_import_amt):
+            raise ValueError(_MASTER_LOST_ROWS_ERROR.format(
+                lost=len(written), total=len(written), name=Path(master_path).name))
+
+        lost = 0
+        for mr in written:
+            row = mr.get('_row')
+            if not row or row > ws.max_row:
+                lost += 1
+                continue
+            same_ref = (safe_str(ws.cell(row=row, column=col_pro_ref).value)
+                        == safe_str(mr['pro_vendor_ref']))
+            same_amt = (safe_amount(ws.cell(row=row, column=col_import_amt).value)
+                        == safe_amount(mr['amount']))
+            if not (same_ref and same_amt):
+                lost += 1
+    finally:
+        wb.close()
+
+    if lost:
+        raise ValueError(_MASTER_LOST_ROWS_ERROR.format(
+            lost=lost, total=len(written), name=Path(master_path).name))
+
+
+# Status lifecycle of a row in the Small Parcels log:
+#   Pending         — the carrier file's data has been logged, nothing billed yet
+#   Bill Generated  — the Acumatica import file for this row has been produced
+#   Imported        — set by the AP team once the file is actually imported
+# 'Pending' is deliberately kept as the first state: it is the value the bill
+# pipeline filters on (analyze_carrier_file, process_freight_bills) and the value
+# the team already uses, so nothing existing changes meaning.
+STATUS_PENDING = 'Pending'
+STATUS_BILL_GENERATED = 'Bill Generated'
+STATUS_IMPORTED = 'Imported'
+
+SMALL_PARCEL_TABS = ('Fedex', 'WWEX')
+_SP_TAB_REQUIRED_HEADERS = ('doc date', 'pro number / vendor ref', 'import amount',
+                            'po / sos', 'notes')
+
+
+def validate_small_parcel_master(master_path):
+    """Returns (is_valid, error) for a Small Parcels master workbook — used both
+    for the shared copy and for one uploaded by hand."""
+    try:
+        wb = load_workbook(str(master_path), read_only=True)
+    except PermissionError:
+        return False, _MASTER_OPEN_ERROR
+    except Exception as e:
+        return False, f'Unable to read workbook — {e}'
+
+    try:
+        by_name = {s.strip().lower(): s for s in wb.sheetnames}
+        for tab in SMALL_PARCEL_TABS:
+            actual = by_name.get(tab.lower())
+            if actual is None:
+                return False, (f'Wrong workbook — no "{tab}" tab found. '
+                               'Upload the Carrier Import File - Small Parcels.')
+            headers = {_norm_header(c.value) for c in next(wb[actual].iter_rows(max_row=1))}
+            missing = [h for h in _SP_TAB_REQUIRED_HEADERS if h not in headers]
+            if missing:
+                return False, (f'The "{tab}" tab is missing expected columns: '
+                               f'{", ".join(missing)}.')
+    finally:
+        wb.close()
+    return True, None
+
+
+def append_rows_to_carrier_tab(master_path, sheet_name, mapped_rows):
+    """Appends mapped rows to a flat carrier tab of the Small Parcels master
+    workbook (Doc Date | Pro number / Vendor Ref | Import Amount | PO / SOS |
+    Notes, plus an optional Status column), skipping rows already present.
+
+    Each mapped row is {'doc_date', 'pro_vendor_ref', 'amount', 'po_sos',
+    'notes'}; extra keys are ignored, so callers can carry their own flags.
+    Returns {'added', 'skipped_duplicates', 'written'} where 'written' holds the
+    mapped rows actually appended — callers count their own categories from it
+    instead of re-running the dedupe.
+
+    Shared by the WWEX raw export and the FedEx invoice PDF ingests; both tabs
+    have identical shape, only the mapping upstream differs."""
+    try:
+        wb = load_workbook(str(master_path))
+    except PermissionError:
+        raise ValueError(_MASTER_OPEN_ERROR)
+
+    ws = next((wb[s] for s in wb.sheetnames if s.strip().lower() == sheet_name.lower()), None)
+    if ws is None:
+        raise ValueError(f'Sheet "{sheet_name}" not found in master workbook.')
+
+    header_idx = {_norm_header(c.value): c.column for c in ws[1] if c.value}
+    required_headers = ['doc date', 'pro number / vendor ref', 'import amount',
+                        'po / sos', 'notes']
+    missing_headers = [h for h in required_headers if h not in header_idx]
+    if missing_headers:
+        raise ValueError(f'Master "{sheet_name}" tab missing expected columns: '
+                         f'{", ".join(missing_headers)}.')
+
+    col_doc_date   = header_idx['doc date']
+    col_pro_ref    = header_idx['pro number / vendor ref']
+    col_import_amt = header_idx['import amount']
+    col_po_sos     = header_idx['po / sos']
+    col_notes      = header_idx['notes']
+    # Optional on the flat tab — same keyword match the bill pipeline uses, so
+    # rows are written as Pending whenever the column exists and are simply
+    # left unmarked (and therefore all-pending by default) when it doesn't.
+    col_status = next((idx for h, idx in header_idx.items()
+                       if any(kw in h for kw in ('status', 'pending', 'imported'))), None)
+
+    # Template row to clone formatting from (number format, font, alignment,
+    # fill, border) — appended rows must look identical to existing ones, not
+    # fall back to openpyxl's blank "General" default styling. Read the most
+    # recent existing Pending row rather than assuming row 2, so appended rows
+    # inherit whatever styling the tab currently gives a Pending row. No fill
+    # is applied on top of that.
+    template_row = None
+    if col_status:
+        for r in range(ws.max_row, 1, -1):
+            if safe_str(ws.cell(row=r, column=col_status).value).lower() == 'pending':
+                template_row = r
+                break
+    if template_row is None and ws.max_row >= 2:
+        template_row = ws.max_row
+    max_col = ws.max_column
+
+    # Counted, not a plain set: a single invoice can legitimately bill the same
+    # tracking number twice for the same amount (a re-delivery, a duplicated
+    # surcharge). Comparing counts lets the second copy through while still
+    # skipping everything when the whole file is re-uploaded.
+    existing_counts = Counter(
+        _carrier_tab_row_key(
+            safe_str(ws.cell(row=r, column=col_pro_ref).value),
+            safe_str(ws.cell(row=r, column=col_po_sos).value),
+            ws.cell(row=r, column=col_doc_date).value,
+            safe_amount(ws.cell(row=r, column=col_import_amt).value),
+        )
+        for r in range(2, ws.max_row + 1)
+    )
+
+    seen     = Counter()
+    written  = []
+    skipped  = 0
+    next_row = ws.max_row + 1
+
+    for mr in mapped_rows:
+        key = _carrier_tab_row_key(mr['pro_vendor_ref'], mr['po_sos'],
+                                   mr['doc_date'], mr['amount'])
+        seen[key] += 1
+        if seen[key] <= existing_counts[key]:
+            skipped += 1
+            continue
+
+        if template_row:
+            for c in range(1, max_col + 1):
+                src = ws.cell(row=template_row, column=c)
+                dst = ws.cell(row=next_row, column=c)
+                dst.number_format = src.number_format
+                dst.font          = copy(src.font)
+                dst.alignment     = copy(src.alignment)
+                dst.fill          = copy(src.fill)
+                dst.border        = copy(src.border)
+
+        ws.cell(row=next_row, column=col_doc_date,   value=mr['doc_date'])
+        ws.cell(row=next_row, column=col_pro_ref,    value=mr['pro_vendor_ref'])
+        ws.cell(row=next_row, column=col_import_amt, value=mr['amount'])
+        ws.cell(row=next_row, column=col_po_sos,     value=mr['po_sos'])
+        ws.cell(row=next_row, column=col_notes,      value=mr['notes'])
+        if col_status:
+            ws.cell(row=next_row, column=col_status, value=STATUS_PENDING)
+
+        # Kept so the caller can flip these rows to 'Bill Generated' once the
+        # Acumatica import file for them exists.
+        mr['_row'] = next_row
+        next_row += 1
+        written.append(mr)
+
+    if written:
+        _extend_table_ranges(ws, next_row - 1)
+        try:
+            wb.save(str(master_path))
+        except PermissionError:
+            raise ValueError(_MASTER_OPEN_ERROR)
+        wb.close()
+        # Raises rather than returning, so a workbook that threw the rows away
+        # cannot be reported as a successful import.
+        _verify_carrier_rows_persisted(master_path, sheet_name, written)
+
+    return {'added': len(written), 'skipped_duplicates': skipped, 'written': written}
+
+
+def set_carrier_tab_status(master_path, sheet_name, excel_rows, status):
+    """Sets Status on specific rows of a flat carrier tab. Used to move rows from
+    'Pending' to 'Bill Generated' once their Acumatica import file exists.
+    Returns the number of rows updated."""
+    rows = [r for r in excel_rows if r]
+    if not rows:
+        return 0
+
+    try:
+        wb = load_workbook(str(master_path))
+    except PermissionError:
+        raise ValueError(_MASTER_OPEN_ERROR)
+
+    ws = next((wb[s] for s in wb.sheetnames if s.strip().lower() == sheet_name.lower()), None)
+    if ws is None:
+        raise ValueError(f'Sheet "{sheet_name}" not found in master workbook.')
+
+    header_idx = {_norm_header(c.value): c.column for c in ws[1] if c.value}
+    col_status = next((idx for h, idx in header_idx.items()
+                       if any(kw in h for kw in ('status', 'pending', 'imported'))), None)
+    if not col_status:
+        wb.close()
+        return 0
+
+    for r in rows:
+        if 2 <= r <= ws.max_row:
+            ws.cell(row=r, column=col_status, value=status)
+
+    try:
+        wb.save(str(master_path))
+    except PermissionError:
+        raise ValueError(_MASTER_OPEN_ERROR)
+    return len(rows)
+
+
 def append_wwex_raw_to_master(raw_path, master_path, sheet_name='WWEX'):
-    """Maps a raw WWEX carrier export into the master Carrier Import File's
-    WWEX tab and appends new Pending rows after the last existing row.
+    """Maps a raw WWEX carrier export into the Small Parcels master workbook's
+    flat WWEX tab and appends the rows that aren't there yet.
     Returns {'added', 'skipped_duplicates', 'fee_rows_added'}."""
-    if not WWEX_SMALL_PARCEL_ENABLED:
-        raise ValueError('WWEX (Small Parcel) feature is currently disabled.')
+    if not SMALL_PARCEL_ENABLED:
+        raise ValueError('Small Parcels ingestion is currently disabled.')
 
     df = pd.read_excel(str(raw_path))
 
@@ -568,7 +1140,7 @@ def append_wwex_raw_to_master(raw_path, master_path, sheet_name='WWEX'):
     if not all([col_invdate, col_shipdate, col_vendorref, col_amount, col_invoicenum]):
         raise ValueError('WWEX raw file missing required columns.')
 
-    upload_stamp = f'Upload Freight Bill Processor Tool {datetime.now().strftime("%m/%d/%Y - %H:%M")}'
+    stamp = _upload_stamp()
 
     mapped_rows = []
     for _, row in df.iterrows():
@@ -581,143 +1153,642 @@ def append_wwex_raw_to_master(raw_path, master_path, sheet_name='WWEX'):
         is_fee = fee_desc is not None
 
         invoicenum = safe_str(row.get(col_invoicenum, ''))
-        tracking   = safe_str(row.get(col_vendorref, ''))
-        # PO/SOS and BOL both carry the tracking number (Vendor Reference 2) —
-        # it's what the reconciliation cascade in process_freight_bills matches
-        # against Acumatica's shipment tracking numbers. Falls back to the
-        # invoice # on fee lines, which have no tracking number of their own.
-        po_sos_bol = tracking or invoicenum
-        pro_number = safe_str(row.get(col_billref1, '')) if col_billref1 else ''
+        # Tracking number (Vendor Reference 2, same value as Airbill #) — it is
+        # what the reconciliation cascade in process_freight_bills matches
+        # against Acumatica's shipment tracking numbers. Fee lines carry no
+        # tracking number of their own, so they fall back to the invoice #.
+        tracking = safe_str(row.get(col_vendorref, '')) or invoicenum
+        # Customer PO, blank on plenty of rows.
+        po_sos = safe_str(row.get(col_billref1, '')) if col_billref1 else ''
+
+        # The fee prefix must stay at the head of the note so the bill pipeline
+        # still recognises the line; the upload stamp goes after the separator.
+        note = f'{WWEX_FEE_NOTE_PREFIX}{fee_desc}{NOTE_SEPARATOR}' if is_fee else ''
 
         mapped_rows.append({
-            'carrier_date_of_file': safe_date(row.get(col_invdate)),
-            'doc_date':             safe_date(row.get(col_shipdate)),
-            'pro_vendor_ref':       invoicenum,
-            'po_sos':               po_sos_bol,
-            'bol':                  po_sos_bol,
-            'pro_number':           pro_number,
-            'amount':               safe_amount(row.get(col_amount, 0)),
-            'notes':                f'{WWEX_FEE_NOTE_PREFIX}{fee_desc}' if is_fee else '',
-            'is_fee':               is_fee,
-            'addtl_notes':          upload_stamp,
+            # Every row of an invoice shares the invoice date, exactly like the
+            # FedEx ingest — the per-shipment ship date is not what AP posts on.
+            'doc_date':       safe_date(row.get(col_invdate)),
+            'pro_vendor_ref': tracking,
+            'po_sos':         po_sos,
+            'amount':         safe_amount(row.get(col_amount, 0)),
+            'notes':          f'{note}{stamp}',
+            'is_fee':         is_fee,
+            # Stated on the row rather than inferred downstream, so each
+            # carrier's fees keep their own routing.
+            'fee_subaccount': WWEX_FEE_CONFIG['subaccount'] if is_fee else '',
         })
 
-    try:
-        wb = load_workbook(str(master_path))
-    except PermissionError:
-        raise ValueError('Carrier Import File está abierto en Excel — cerralo e intentá de nuevo.')
+    result = append_rows_to_carrier_tab(master_path, sheet_name, mapped_rows)
+    return {
+        'added':              result['added'],
+        'skipped_duplicates': result['skipped_duplicates'],
+        'fee_rows_added':     sum(1 for mr in result['written'] if mr['is_fee']),
+        'invoice_number':     safe_str(df[col_invoicenum].iloc[0]) if len(df) else '',
+        # Consumed by the caller to build the Acumatica import file; stripped
+        # before the stats are sent to the browser.
+        '_written':           result['written'],
+    }
 
-    ws = next((wb[s] for s in wb.sheetnames if s.strip().lower() == sheet_name.lower()), None)
-    if ws is None:
-        raise ValueError(f'Sheet "{sheet_name}" not found in master workbook.')
 
-    header_idx = {_norm_header(c.value): c.column for c in ws[1] if c.value}
-    required_headers = ['carrier date of file', 'doc date', 'pro number / vendor ref',
-                         'open amount', 'import amount', 'po / sos', 'pro number', 'bol', 'notes',
-                         'status (pending or imported)', 'quote amount', 'variance']
-    missing_headers = [h for h in required_headers if h not in header_idx]
-    if missing_headers:
-        raise ValueError(f'Master WWEX tab missing expected columns: {", ".join(missing_headers)}.')
+# ==============================================================================
+# SMALL PARCELS — ACUMATICA IMPORT FILE
+# ==============================================================================
+# The master workbook is the AP team's log. This is the companion file they
+# actually import into Acumatica: one per uploaded carrier file, holding only the
+# rows that were newly appended to the log.
 
-    col_carrier_date = header_idx['carrier date of file']
-    col_doc_date     = header_idx['doc date']
-    col_pro_ref      = header_idx['pro number / vendor ref']
-    col_open_amt     = header_idx['open amount']
-    col_import_amt   = header_idx['import amount']
-    col_po_sos       = header_idx['po / sos']
-    col_pro_number   = header_idx['pro number']
-    col_bol          = header_idx['bol']
-    col_notes        = header_idx['notes']
-    col_status       = header_idx['status (pending or imported)']
-    col_quote_amt    = header_idx['quote amount']
-    col_variance     = header_idx['variance']
-    # Optional — only written when the master tab actually has this column
-    # (distinct from "Addtil Notes for Edilson", which is never touched).
-    col_addtl_notes  = header_idx.get('additional notes')
+SP_IMPORT_COLUMNS = [
+    'Branch', 'Inventory ID', 'Transaction Descr.', 'Quantity', 'UOM',
+    'Unit Cost', 'Ext. Cost', 'Discount Amount', 'Amount', 'Account',
+    'Description', 'Subaccount', 'Tax Category', 'PO Number', 'PO Receipt Nbr.',
+]
+SP_IMPORT_BRANCH = 'MAIN'
+SP_IMPORT_QUANTITY = 1
+SP_IMPORT_ACCOUNT = '410160'
+SP_IMPORT_DESCRIPTION = 'COGS - PACKAGING & FREIGHT: Outbound Shipping Small Parcel'
+SP_IMPORT_DESCR_PREFIX = 'Bill uploaded from distribution file - '
 
-    # Template row to clone formatting from (number format, font, alignment,
-    # fill, border) — appended rows must look identical to existing ones, not
-    # fall back to openpyxl's blank "General" default styling. Read the most
-    # recent existing Pending row rather than assuming row 2: Pending rows
-    # carry their own highlighting (e.g. Doc Date / Pro number-Vendor Ref in
-    # yellow) that an old Imported row doesn't have.
-    template_row = None
-    for r in range(ws.max_row, 1, -1):
-        if safe_str(ws.cell(row=r, column=col_status).value).lower() == 'pending':
-            template_row = r
-            break
-    if template_row is None and ws.max_row >= 2:
-        template_row = ws.max_row
-    max_col = ws.max_column
 
-    existing_keys = set()
-    for r in range(2, ws.max_row + 1):
-        existing_keys.add(_wwex_raw_key(
-            safe_str(ws.cell(row=r, column=col_pro_ref).value),
-            safe_str(ws.cell(row=r, column=col_po_sos).value),
-            ws.cell(row=r, column=col_doc_date).value,
-            safe_amount(ws.cell(row=r, column=col_import_amt).value),
-        ))
+def _sp_import_subaccount(row, lookups, pacejet_bridge=None):
+    """Subaccount for one small-parcel row. Carrier fee lines carry the
+    subaccount they post to, since each carrier routes its own fees; everything
+    else resolves the customer against Acumatica shipments and is left blank
+    when nothing matches.
 
-    added = skipped = fee_rows_added = 0
-    next_row = ws.max_row + 1
+    The tracking number is tried first because it is the carrier's own key and
+    is unique; the PO comes second, since a PO only identifies a shipment
+    together with its customer. Rows the carrier billed without any reference
+    Acumatica knows fall through to PaceJet, which rated the shipment and can
+    name the Acumatica shipment behind the tracking number, and finally to the
+    sender company printed on the invoice."""
+    if row.get('is_fee'):
+        return row.get('fee_subaccount') or WWEX_FEE_CONFIG['subaccount'], 'Fee'
 
-    for mr in mapped_rows:
-        key = _wwex_raw_key(mr['pro_vendor_ref'], mr['po_sos'], mr['doc_date'], mr['amount'])
-        if key in existing_keys:
-            skipped += 1
+    ordernbr_lookup, shipmentnbr_lookup, tracking_lookup, custorder_lookup = lookups
+    tracking = row.get('pro_vendor_ref')
+    po_sos   = row.get('po_sos')
+
+    match = tracking_lookup.get(tracking) if tracking else None
+    if not match:
+        for key in (po_sos, tracking):
+            if not key:
+                continue
+            match = (ordernbr_lookup.get(key)
+                     or shipmentnbr_lookup.get(key)
+                     or custorder_lookup.get(key))
+            if match:
+                break
+    if match:
+        return SUBACCOUNTS.get(match['Customer'], DEFAULT_SUBACCOUNT), 'Direct'
+
+    if pacejet_bridge and tracking:
+        control = pacejet_bridge.get(tracking)
+        if control:
+            match = shipmentnbr_lookup.get(control) or ordernbr_lookup.get(control)
+            if match:
+                return SUBACCOUNTS.get(match['Customer'], DEFAULT_SUBACCOUNT), 'Via PaceJet'
+
+    # Nothing referenced the shipment, so the sender company printed on the
+    # invoice is the only identification left. Deliberately last: it names the
+    # customer, never the individual shipment, so any real reference wins over
+    # it. Only senders listed in FEDEX_SENDER_SUBACCOUNTS qualify.
+    subaccount = FEDEX_SENDER_SUBACCOUNTS.get(row.get('sender'))
+    if subaccount:
+        return subaccount, 'Via Sender'
+
+    return '', 'Review'
+
+
+def build_small_parcel_import(rows, shipments_df, output_path, pacejet_df=None):
+    """Writes the Acumatica import file for the rows just appended to the log.
+    Returns {'filename', 'rows', 'matched', 'unmatched', 'via_pacejet',
+    'via_sender', 'total'}."""
+    lookups        = build_shipments_lookups(shipments_df)
+    pacejet_bridge = build_pacejet_parcel_bridge(pacejet_df)
+
+    records     = []
+    cases       = []
+    matched     = 0
+    via_pacejet = 0
+    via_sender  = 0
+    for row in rows:
+        subaccount, case = _sp_import_subaccount(row, lookups, pacejet_bridge)
+        cases.append(case)
+        if case != 'Review':
+            matched += 1
+        if case == 'Via PaceJet':
+            via_pacejet += 1
+        if case == 'Via Sender':
+            via_sender += 1
+        amount = row['amount']
+        records.append({
+            'Branch':             SP_IMPORT_BRANCH,
+            'Inventory ID':       '',
+            'Transaction Descr.': f'{SP_IMPORT_DESCR_PREFIX}{row["pro_vendor_ref"]}',
+            'Quantity':           SP_IMPORT_QUANTITY,
+            'UOM':                '',
+            'Unit Cost':          amount,
+            'Ext. Cost':          amount,
+            'Discount Amount':    '',
+            'Amount':             amount,
+            'Account':            SP_IMPORT_ACCOUNT,
+            'Description':        SP_IMPORT_DESCRIPTION,
+            'Subaccount':         subaccount,
+            'Tax Category':       '',
+            'PO Number':          '',
+            'PO Receipt Nbr.':    '',
+        })
+
+    export_df = pd.DataFrame(records, columns=SP_IMPORT_COLUMNS)
+    # Rows with no Subaccount are highlighted the same way process_freight_bills
+    # flags its Review rows, so they are obvious before the import. Rows whose
+    # Subaccount came from the sender company are greyed instead: they are
+    # complete, but the customer was identified by who shipped the package
+    # rather than by a reference, so the AP team can still spot-check them.
+    _write_formatted_excel(output_path, export_df,
+                           [not r['Subaccount'] for r in records], [],
+                           notice_flags=[c == 'Via Sender' for c in cases])
+    return {
+        'filename':    Path(output_path).name,
+        'rows':        len(records),
+        'matched':     matched,
+        'unmatched':   len(records) - matched,
+        'via_pacejet': via_pacejet,
+        'via_sender':  via_sender,
+        'total':       round(sum(r['amount'] for r in rows), 2),
+    }
+
+
+# ==============================================================================
+# FEDEX INVOICE PDF INGESTION
+# ==============================================================================
+# The invoice PDF is parsed directly — no intermediate spreadsheet. Text is
+# extracted per page and matched with label-anchored regexes rather than by line
+# position: the extractor glues adjacent tokens together, so labels ("Ship
+# Date:", "Total Charge", "P.O.#:") are the only stable anchors.
+
+_FEDEX_AMOUNT = r'-?\$?[\d,]+\.\d\d'
+_FEDEX_INVOICE_NUM_RE = re.compile(r'Invoice Number\s*(\S+?)\s*Account Number')
+_FEDEX_INVOICE_DATE_RE = re.compile(r'Invoice Date\s*([A-Z][a-z]{2} \d{1,2}, \d{4})')
+_FEDEX_INVOICE_TOTAL_RE = re.compile(r'TOTAL THIS INVOICE\s*USD\s*(' + _FEDEX_AMOUNT + ')')
+_FEDEX_TOTAL_CHARGE_RE = re.compile(r'Total Charge\s*USD\s*(' + _FEDEX_AMOUNT + ')')
+# Ground tracking numbers are 12 digits and are the first value of the row that
+# follows the "Rated Weight" column header. Both ends of that number can be glued
+# to neighbouring values: to the service type on the left-hand side
+# ("872388092075Direct Sign") and, on shipments printed without a service type,
+# to the zone and weights on the right ("7924523186498123.6 lbs"). So the match
+# is anchored on the header and must not require a boundary after the 12th digit.
+_FEDEX_TRACKING_HEADER = 'Rated Weight'
+_FEDEX_TRACKING_RE = re.compile(r'(?<!\d)(\d{12})')
+# The PO sits between the "P.O.#:" label and the "Tracking ID" column header,
+# followed by whichever boilerplate footnotes apply to the shipment.
+_FEDEX_PO_SEGMENT_RE = re.compile(r'P\.O\.#:(.*?)Tracking ID', re.DOTALL)
+# Footnote sentences FedEx prints in the same area. The PO, when present, always
+# precedes them, so the segment is cut at the earliest marker found.
+_FEDEX_NOTE_MARKERS = (
+    'The Earned Discount', 'We calculated', 'This shipment', 'Additional Handling',
+    'Minimum Billable', 'Dimensions -', 'Residential', 'Address Correction',
+)
+# Not every invoice prints a "P.O.#:" label. Some print the same references in
+# the FedEx reference fields instead, glued into one run of text
+# ("Ref.#3: SOS140604Ref.#2: SOS129956"), and the shipment that gave the AP team
+# a blank Subaccount had its sales order printed there all along. Read in this
+# order: the sales order Acumatica knows comes first, the customer PO second,
+# the free-text customer reference last.
+_FEDEX_REF_FIELDS = ('Ref.#3', 'Ref.#2', 'Cust. Ref.')
+_FEDEX_REF_SEGMENT_RES = {
+    label: re.compile(
+        re.escape(label) + r'\s*:\s*(.*?)(?=Cust\. Ref\.\s*:|Ref\.#[123]\s*:|'
+        r'Dept\.#\s*:|P\.O\.#:|Tracking ID|$)', re.DOTALL)
+    for label in _FEDEX_REF_FIELDS
+}
+# A reference field runs straight into whatever boilerplate the shipment carries,
+# and that boilerplate holds numbers of its own (a revenue threshold, a zone), so
+# the segment is cut at the first marker before anything is read out of it.
+_FEDEX_REF_CUT_MARKERS = _FEDEX_NOTE_MARKERS + (
+    'Payor:', 'NO REFERENCE INFORMATION', 'Distance Based', 'The delivery commitment',
+    'The Earned Discount', 'Fuel Surcharge', 'The required information',
+    'FedEx has audited', 'Package Delivered', 'Automation', 'Svc Area',
+    'Your package', 'Please be sure', 'FedEx Use', 'Sender ', 'Recipient ',
+)
+# Only the leading tokens are considered: a reference sits at the start of its
+# field, so a number found further in is boilerplate that survived the cut.
+_FEDEX_REF_MAX_TOKENS = 3
+# A reference token is one unbroken run — no spaces, since the multi-word values
+# in these fields are project names and contact names, never a reference
+# Acumatica can match. Upper case and digits only, at least two digits: that is
+# how every reference on these invoices is printed (SOS140604, 410467754,
+# KIS12034AB6856F05), and it is what keeps a contact name out of the field —
+# "JS-Joann Montalvo2" carries a digit too.
+_FEDEX_REF_TOKEN_RE = re.compile(r'^(?=(?:\D*\d){2})[A-Z0-9][A-Z0-9\-/.]{4,}$')
+
+# A PO carries a digit, a separator, or is all caps. Requiring that rejects the
+# stray plain words left over when unknown boilerplate is not cut, so an
+# unrecognised footnote leaves PO / SOS blank instead of writing garbage.
+_FEDEX_PO_SHAPE_RE = re.compile(r'^(?=.*(?:\d|[-/]|[A-Z]{2}))[A-Za-z0-9][A-Za-z0-9\-/. ]*$')
+# An aggregated (non-itemised) charge class is reported as a small table of its
+# own instead of as shipments. It is recognised by that table's column header
+# rather than by the class name: an aggregated table counts "Packages", an
+# itemised one counts "Shipments". Keying on the header is what survives FedEx
+# renaming the class — "FedEx SmartPost" became "FedEx Ground Economy", and the
+# first invoice printed with the new name reconciled short and imported nothing.
+_FEDEX_AGGREGATE_SECTION_RE = re.compile(
+    r'FedEx [A-Za-z ]{1,30}?Shipments \((?:Original|Rebill)\)\s*DatePackages(.*?)'
+    r'(?=FedEx [A-Za-z ]{1,30}?Shipments \(|Total FedEx|TOTAL THIS INVOICE|$)', re.DOTALL)
+# One section can hold more than one class (1-70lbs and over-70lbs), each closed
+# by its own "<class name> Subtotal$211.72".
+_FEDEX_AGGREGATE_CLASS_RE = re.compile(r'Subtotal\s*\$(' + _FEDEX_AMOUNT + ')')
+# Every row of a class reads "MM/DD<packages> <weight>". The count is summed
+# across all of them: a class routinely spans several ship dates, and reading
+# only the first row is what made the row label undercount the packages.
+_FEDEX_AGGREGATE_PACKAGES_RE = re.compile(r'\d{2}/\d{2}(\d+)\s')
+# Every charge class closes its shipment table with "<class name> Subtotal$1.23",
+# and those subtotals add up to the printed invoice total. They are not used to
+# build rows — they are the invoice's own breakdown, read only to name the class
+# behind a residual. Without it a mismatch reports a bare dollar amount and the
+# class has to be found by hand in the PDF.
+_FEDEX_CLASS_SUBTOTAL_RE = re.compile(
+    r'([A-Za-z][A-Za-z0-9 \-.>/]{2,40}?)\s*Subtotal\s*\$(' + _FEDEX_AMOUNT + ')')
+# The first class of a "(Rebill)" table is printed glued to its own data row
+# ("aid05/051 39.00 32.26 32.26Ground-Prepaid"), so the label is cut after the
+# last amount that ran into it.
+_FEDEX_SUBTOTAL_LABEL_NOISE_RE = re.compile(r'^.*\d\.\d\d')
+# A breakdown longer than this is listed truncated rather than filling the
+# browser with the whole invoice.
+_FEDEX_MAX_LISTED_CLASSES = 12
+
+FEDEX_AGGREGATE_LABEL = '(not itemized - {n} package{s} aggregated)'
+# The page-1 Invoice Summary declares every charge class on the invoice, only
+# one of which ("FedEx Express Services") is itemised as shipments further down.
+# The rest are account-level charges that belong to no shipment at all, and
+# leaving them unparsed is what made a whole invoice fail to reconcile and
+# import nothing. Matched by their printed label, one pattern each: the summary
+# prints some classes with a "Total Charges" column and some without.
+_FEDEX_SUMMARY_RE = re.compile(r'Invoice Summary(.*?)TOTAL THIS INVOICE', re.DOTALL)
+FEDEX_SUMMARY_FEE_PATTERNS = (
+    # Customer-level fees — scheduled pickup and the like.
+    ('FedEx Other Charges',
+     re.compile(r'FedEx Other Charges\s*Total Charges\s*USD\s*(' + _FEDEX_AMOUNT + ')')),
+    # Finance charges — late fees on previously issued invoices. The lookbehind
+    # keeps this pattern off the "FedEx Other Charges" label above.
+    ('Other Charges',
+     re.compile(r'(?<!FedEx )Other Charges\s*USD\s*(' + _FEDEX_AMOUNT + ')')),
+)
+FEDEX_FEE_LABEL = '(not itemized - {label})'
+# The sender block of a shipment, between the two address labels. FedEx prints
+# the contact name first and the company on the next line, both glued into one
+# run of text by the extractor, so the whole segment is kept and searched by
+# keyword rather than split into fields.
+_FEDEX_SENDER_RE = re.compile(r'Sender(.*?)Recipient', re.DOTALL)
+# Last-resort customer identification, used only once the tracking number, the
+# PO and the PaceJet bridge have all failed to name an Acumatica shipment.
+# A return shipped from a retailer's own store carries no reference Acumatica
+# knows, but the retailer's name is printed on the sender address — enough to
+# post the charge to that customer instead of leaving it for manual review.
+# Keyed by a company name as printed on the invoice. Names that belong to an
+# Acumatica customer read their subaccount out of SUBACCOUNTS rather than
+# repeating the string; a sender that is a vendor rather than a customer (an
+# inbound purchase, not a return) has no customer id and names its subaccount
+# directly. Matching is a substring test on the sender address, so a more
+# specific name must come before a shorter one it contains.
+FEDEX_SENDER_SUBACCOUNTS = {
+    'LOWES':                SUBACCOUNTS['C100002'],
+    'NUWHIRL SYSTEMS CORP': 'PUR-000000-000000-000000',
+}
+
+
+def _pdf_lines(pdf_path):
+    """Full text of a PDF as one normalised string per page, in document order.
+    Sole point of contact with the PDF library — swapping libraries only means
+    rewriting this function."""
+    from pypdf import PdfReader
+
+    pages = []
+    reader = PdfReader(str(pdf_path))
+    for page in reader.pages:
+        text = page.extract_text() or ''
+        # \x7f is FedEx's footnote marker glyph; nbsp shows up around amounts.
+        text = text.replace('\x7f', ' ').replace('\xa0', ' ')
+        pages.append(' '.join(text.split()))
+    return pages
+
+
+def _fedex_amount(raw):
+    """FedEx prints credits as -$12.34 and occasionally as ($12.34)."""
+    raw = (raw or '').strip()
+    if raw.startswith('(') and raw.endswith(')'):
+        return -safe_amount(raw[1:-1])
+    return safe_amount(raw)
+
+
+def _fedex_tracking(head):
+    """Tracking number of one shipment block. Preferred match is the first
+    12-digit run after the column header; some shipments repeat the header for
+    their dimension footnotes, so a whole-block search is the fallback."""
+    anchor = head.find(_FEDEX_TRACKING_HEADER)
+    if anchor >= 0:
+        m = _FEDEX_TRACKING_RE.search(head[anchor:])
+        if m:
+            return m.group(1)
+    m = _FEDEX_TRACKING_RE.search(head)
+    return m.group(1) if m else ''
+
+
+def _fedex_sender(block):
+    """Company on the sender address of one shipment block, as one of the keys
+    of FEDEX_SENDER_SUBACCOUNTS, or '' when none of them is printed there.
+
+    Only the sender segment is searched: the same name on the recipient side
+    means the opposite direction and must not identify the customer."""
+    m = _FEDEX_SENDER_RE.search(block)
+    if not m:
+        return ''
+    segment = m.group(1).upper()
+    return next((name for name in FEDEX_SENDER_SUBACCOUNTS if name in segment), '')
+
+
+def _fedex_ref_token(seg):
+    """First reference-shaped token of a FedEx reference field, or '' when the
+    field holds nothing that could be a reference."""
+    cuts = [seg.find(marker) for marker in _FEDEX_REF_CUT_MARKERS]
+    cuts = [c for c in cuts if c >= 0]
+    if cuts:
+        seg = seg[:min(cuts)]
+
+    for token in seg.split()[:_FEDEX_REF_MAX_TOKENS]:
+        if (token not in FEDEX_PO_NOISE_TOKENS
+                and len(token) <= FEDEX_PO_MAX_LENGTH
+                and _FEDEX_REF_TOKEN_RE.match(token)):
+            return token
+    return ''
+
+
+def _fedex_po(block):
+    """PO for one shipment block, or '' when the invoice printed no reference
+    this tool can use.
+
+    The "P.O.#:" label wins whenever the invoice prints it, whole segment and
+    all: a PO there can be several words ("Bldg R: Door H/W") and is the field
+    FedEx reserves for it. The reference fields are read only when that label is
+    absent or holds nothing usable, and only one token deep, since they are
+    shared with free text."""
+    m = _FEDEX_PO_SEGMENT_RE.search(block)
+    if m:
+        seg = m.group(1)
+        cuts = [seg.find(marker) for marker in _FEDEX_NOTE_MARKERS]
+        cuts = [c for c in cuts if c >= 0]
+        if cuts:
+            seg = seg[:min(cuts)]
+
+        po = ' '.join(seg.split())
+        if (po not in FEDEX_PO_NOISE_TOKENS
+                and FEDEX_PO_MIN_LENGTH <= len(po) <= FEDEX_PO_MAX_LENGTH
+                and _FEDEX_PO_SHAPE_RE.match(po)):
+            return po
+        # The label was printed with the PO buried in text the markers above do
+        # not cut ("RETURN PO 406617968", "408245429 Unauthorized"), so the same
+        # token scan the reference fields use is the second chance.
+        po = _fedex_ref_token(seg)
+        if po:
+            return po
+
+    for label in _FEDEX_REF_FIELDS:
+        rm = _FEDEX_REF_SEGMENT_RES[label].search(block)
+        if not rm:
             continue
-        existing_keys.add(key)
+        po = _fedex_ref_token(rm.group(1))
+        if po:
+            return po
+    return ''
 
-        if template_row:
-            for c in range(1, max_col + 1):
-                src = ws.cell(row=template_row, column=c)
-                dst = ws.cell(row=next_row, column=c)
-                dst.number_format = src.number_format
-                dst.font          = copy(src.font)
-                dst.alignment     = copy(src.alignment)
-                dst.fill          = copy(src.fill)
-                dst.border        = copy(src.border)
 
-        # Doc Date, Pro number/Vendor Ref, Import Amount, PO/SOS always get
-        # yellow fill + black font — fixed regardless of the template row.
-        for c in (col_doc_date, col_pro_ref, col_import_amt, col_po_sos):
-            cell = ws.cell(row=next_row, column=c)
-            base = cell.font
-            cell.font = Font(name=base.name, size=base.size, bold=base.bold,
-                              italic=base.italic, color='FF000000')
-            cell.fill = PatternFill(fill_type='solid', fgColor='FFFFFF00')
+def _fedex_class_subtotals(text):
+    """[(class name, amount)] for every charge class the invoice closes with its
+    own subtotal, in printed order. This is the invoice's own breakdown of the
+    total, so it names the classes a parse can be missing."""
+    classes = []
+    for label, amount in _FEDEX_CLASS_SUBTOTAL_RE.findall(text):
+        label = _FEDEX_SUBTOTAL_LABEL_NOISE_RE.sub('', label).strip()
+        if label:
+            classes.append((label, _fedex_amount(amount)))
+    return classes
 
-        ws.cell(row=next_row, column=col_carrier_date, value=mr['carrier_date_of_file'])
-        ws.cell(row=next_row, column=col_doc_date,     value=mr['doc_date'])
-        ws.cell(row=next_row, column=col_pro_ref,      value=mr['pro_vendor_ref'])
-        ws.cell(row=next_row, column=col_open_amt,     value=mr['amount'])
-        ws.cell(row=next_row, column=col_import_amt,   value=mr['amount'])
-        ws.cell(row=next_row, column=col_po_sos,       value=mr['po_sos'])
-        ws.cell(row=next_row, column=col_pro_number,   value=mr['pro_number'])
-        ws.cell(row=next_row, column=col_bol,          value=mr['bol'])
-        ws.cell(row=next_row, column=col_quote_amt,    value=0)
-        ws.cell(row=next_row, column=col_variance,     value=0)
-        ws.cell(row=next_row, column=col_notes,        value=mr['notes'])
-        ws.cell(row=next_row, column=col_status,       value='Pending')
 
-        if col_addtl_notes:
-            existing_note = safe_str(ws.cell(row=next_row, column=col_addtl_notes).value)
-            new_note = f'{existing_note} {mr["addtl_notes"]}'.strip() if existing_note else mr['addtl_notes']
-            ws.cell(row=next_row, column=col_addtl_notes, value=new_note)
+def _fedex_residual_diagnosis(text, residual):
+    """One sentence naming the charges behind a non-zero residual, for the
+    message the AP team reads. A class whose own subtotal equals the residual is
+    the class that went unparsed — the usual cause, and the one FedEx renaming
+    "FedEx SmartPost" to "FedEx Ground Economy" produced. When no single class
+    accounts for it, the whole breakdown is listed so the invoice does not have
+    to be opened by hand."""
+    classes = _fedex_class_subtotals(text)
+    if not classes:
+        return ''
 
-        next_row += 1
-        added += 1
-        if mr['is_fee']:
-            fee_rows_added += 1
+    target = round(abs(residual), 2)
+    named = [f'"{label}" (${amount:,.2f})' for label, amount in classes
+             if abs(amount - target) <= FEDEX_TOTAL_TOLERANCE]
+    if named:
+        return (f'Unparsed charge class: {", ".join(named)} — the invoice prints '
+                f'it under a name this parser does not recognise.')
 
-    if added:
-        try:
-            wb.save(str(master_path))
-        except PermissionError:
-            raise ValueError('Carrier Import File está abierto en Excel — cerralo e intentá de nuevo.')
+    listed = '; '.join(f'{label} ${amount:,.2f}'
+                       for label, amount in classes[:_FEDEX_MAX_LISTED_CLASSES])
+    if len(classes) > _FEDEX_MAX_LISTED_CLASSES:
+        listed += f'; and {len(classes) - _FEDEX_MAX_LISTED_CLASSES} more'
+    return f'Charge classes printed on this invoice: {listed}.'
 
-    return {'added': added, 'skipped_duplicates': skipped, 'fee_rows_added': fee_rows_added}
+
+def parse_fedex_pdf(pdf_path):
+    """Parses a FedEx invoice PDF into rows for the flat Fedex tab.
+
+    Returns {'invoice_number', 'invoice_date', 'rows', 'detail_count',
+    'aggregate_count', 'detail_total', 'invoice_total', 'residual'} where
+    'residual' is invoice_total - (detail + aggregate) — non-zero means the
+    invoice holds charges this parser did not account for, which the caller
+    surfaces instead of silently under-importing."""
+    pages = _pdf_lines(pdf_path)
+    text = ' '.join(pages)
+
+    m = _FEDEX_INVOICE_NUM_RE.search(text)
+    invoice_number = m.group(1) if m else ''
+    m = _FEDEX_INVOICE_DATE_RE.search(text)
+    invoice_date = safe_date(m.group(1)) if m else None
+    m = _FEDEX_INVOICE_TOTAL_RE.search(text)
+    invoice_total = _fedex_amount(m.group(1)) if m else 0.0
+
+    note_head = f'FedEx Inv {invoice_number}' if invoice_number else 'FedEx Inv'
+    note = f'{note_head}{NOTE_SEPARATOR}{_upload_stamp()}'
+
+    rows = []
+    # Each itemised shipment is a block that starts at a "Ship Date:" label and
+    # runs until the next one.
+    blocks = text.split('Ship Date:')[1:]
+    for block in blocks:
+        m = _FEDEX_TOTAL_CHARGE_RE.search(block)
+        if not m:
+            continue
+        rows.append({
+            'doc_date':       invoice_date,
+            'pro_vendor_ref': _fedex_tracking(block[:m.start()]),
+            'po_sos':         _fedex_po(block),
+            'amount':         _fedex_amount(m.group(1)),
+            'notes':          note,
+            'is_aggregate':   False,
+            # Not written to the log — carried through to the Acumatica import
+            # file, where it is the last chance to name the customer.
+            'sender':         _fedex_sender(block),
+        })
+    detail_count = len(rows)
+    detail_total = round(sum(r['amount'] for r in rows), 2)
+
+    # Aggregated classes (FedEx Ground Economy, formerly SmartPost) carry no
+    # per-shipment detail — the invoice only reports a package count and a class
+    # subtotal.
+    aggregate_total = 0.0
+    for section in _FEDEX_AGGREGATE_SECTION_RE.findall(text):
+        cursor = 0
+        for m in _FEDEX_AGGREGATE_CLASS_RE.finditer(section):
+            amount = _fedex_amount(m.group(1))
+            # This class owns every row since the previous class in the same
+            # section closed.
+            packages = sum(int(n) for n in _FEDEX_AGGREGATE_PACKAGES_RE.findall(
+                section[cursor:m.start()]))
+            cursor = m.end()
+            aggregate_total += amount
+            rows.append({
+                'doc_date':       invoice_date,
+                'pro_vendor_ref': FEDEX_AGGREGATE_LABEL.format(
+                    n=packages, s='' if packages == 1 else 's'),
+                'po_sos':         '',
+                'amount':         amount,
+                'notes':          note,
+                'is_aggregate':   True,
+                # An aggregated class prints no addresses at all.
+                'sender':         '',
+            })
+
+    aggregate_count = len(rows) - detail_count
+
+    # Account-level charges declared in the page-1 Invoice Summary. Read from
+    # the summary rather than from their own detail pages: the summary is the
+    # invoice's own statement of what it is charging for, and it is the block
+    # TOTAL THIS INVOICE itself comes from, so the two always agree.
+    fee_total = 0.0
+    m = _FEDEX_SUMMARY_RE.search(pages[0] if pages else '')
+    summary = m.group(1) if m else ''
+    for label, pattern in FEDEX_SUMMARY_FEE_PATTERNS:
+        fm = pattern.search(summary)
+        if not fm:
+            continue
+        amount = _fedex_amount(fm.group(1))
+        if not amount:
+            continue
+        fee_total += amount
+        rows.append({
+            'doc_date':       invoice_date,
+            'pro_vendor_ref': FEDEX_FEE_LABEL.format(label=label),
+            'po_sos':         '',
+            'amount':         amount,
+            'notes':          note,
+            'is_aggregate':   False,
+            # Skips the customer cascade in _sp_import_subaccount entirely and
+            # carries the subaccount it posts to, so FedEx fees stay routed by
+            # FEDEX_FEE_CONFIG and not by whatever WWEX uses.
+            'is_fee':         True,
+            'fee_subaccount': FEDEX_FEE_CONFIG['subaccount'],
+            'sender':         '',
+        })
+
+    # Still non-zero when a charge class this parser does not know about is on
+    # the invoice — the caller refuses to import rather than under-bill.
+    residual = round(invoice_total - detail_total - aggregate_total - fee_total, 2)
+
+    return {
+        'invoice_number':  invoice_number,
+        'invoice_date':    invoice_date,
+        'rows':            rows,
+        'detail_count':    detail_count,
+        'aggregate_count': aggregate_count,
+        'fee_count':       len(rows) - detail_count - aggregate_count,
+        'detail_total':    detail_total,
+        'fee_total':       round(fee_total, 2),
+        'invoice_total':   invoice_total,
+        'residual':        residual,
+        # Empty unless the invoice failed to reconcile: the sentence that names
+        # what the residual is made of, read straight into the blocking message.
+        'diagnosis':       (_fedex_residual_diagnosis(text, residual)
+                            if abs(residual) > FEDEX_TOTAL_TOLERANCE else ''),
+    }
+
+
+def validate_fedex_pdf(pdf_path):
+    """Returns (is_valid, error)."""
+    # Checked before handing the file to the PDF library, so a mislabelled file
+    # gets a clear message instead of a parser error.
+    try:
+        with open(str(pdf_path), 'rb') as fh:
+            if fh.read(5) != b'%PDF-':
+                return False, 'Wrong file — this is not a PDF.'
+    except Exception as e:
+        return False, f'Unable to read file — {e}'
+
+    try:
+        pages = _pdf_lines(pdf_path)
+    except Exception as e:
+        return False, f'Unable to read PDF — {e}'
+
+    text = ' '.join(pages)
+    if not text.strip():
+        return False, ('No text found in this PDF — it looks scanned. '
+                       'Download the invoice PDF from the FedEx billing portal.')
+    if not _FEDEX_INVOICE_NUM_RE.search(text):
+        return False, 'Wrong file — no FedEx invoice number found in this PDF.'
+    if 'Ship Date:' not in text:
+        return False, 'Wrong file — no shipment detail found in this FedEx invoice.'
+    return True, None
+
+
+def append_fedex_pdf_to_master(pdf_path, master_path, sheet_name='Fedex'):
+    """Parses a FedEx invoice PDF and appends its shipments to the Small Parcels
+    master workbook's flat Fedex tab.
+    Returns {'added', 'skipped_duplicates', 'aggregate_rows_added',
+    'fee_rows_added', 'invoice_number', 'detail_total', 'invoice_total',
+    'residual'}."""
+    if not SMALL_PARCEL_ENABLED:
+        raise ValueError('Small Parcels ingestion is currently disabled.')
+
+    parsed = parse_fedex_pdf(pdf_path)
+    if not parsed['rows']:
+        raise ValueError('No shipments found in this FedEx invoice PDF.')
+
+    # Nothing is written unless the parsed rows add up to the invoice total the
+    # PDF itself declares. A short import would silently under-pay the carrier,
+    # so a mismatch is reported with both figures instead, followed by the
+    # invoice's own breakdown of what the missing amount is.
+    if abs(parsed['residual']) > FEDEX_TOTAL_TOLERANCE:
+        raise BlockingImportError(
+            f'FedEx invoice {parsed["invoice_number"]} requires manual review — '
+            f'${abs(parsed["residual"]):,.2f} of the '
+            f'${parsed["invoice_total"]:,.2f} total is unrecognised. '
+            f'Nothing was imported.'
+            + (f' {parsed["diagnosis"]}' if parsed['diagnosis'] else ''))
+
+    result = append_rows_to_carrier_tab(master_path, sheet_name, parsed['rows'])
+    return {
+        'added':                result['added'],
+        'skipped_duplicates':   result['skipped_duplicates'],
+        'aggregate_rows_added': sum(1 for r in result['written'] if r['is_aggregate']),
+        'fee_rows_added':       sum(1 for r in result['written'] if r.get('is_fee')),
+        'invoice_number':       parsed['invoice_number'],
+        'detail_total':         parsed['detail_total'],
+        'invoice_total':        parsed['invoice_total'],
+        'residual':             parsed['residual'],
+        # Consumed by the caller to build the Acumatica import file; stripped
+        # before the stats are sent to the browser.
+        '_written':             result['written'],
+    }
 
 
 def _vectorized_amount(df, col):
@@ -740,6 +1811,8 @@ def analyze_carrier_file(carrier_path):
     missing_cells = []
 
     for sheet_name, df in sheets.items():
+        if is_detail_sheet(sheet_name):
+            continue
         carrier = next((c for c in CARRIER_VENDOR_IDS if c.lower() in sheet_name.lower()), None)
         if not carrier:
             continue
@@ -785,16 +1858,39 @@ def analyze_carrier_file(carrier_path):
     }
 
 
+def is_small_parcel_master(sheet_names):
+    """True for the Small Parcels master workbook. It has to be told apart from
+    the LTL Carrier Import File before the carrier check below: its WWEX tab
+    matches CARRIER_VENDOR_IDS, so the LTL branch would otherwise claim it."""
+    normalized = {_norm_header(s) for s in sheet_names}
+    return ({'fedex', 'wwex'} <= normalized
+            and not any(n.startswith('master') for n in normalized))
+
+
 def classify_file(file_path, filename):
     """Auto-detect file type from content structure.
-    Returns ('carrier' | 'priority1' | 'pacejet' | 'unknown', error_or_None).
+    Returns ('carrier' | 'priority1' | 'pacejet' | 'wwex_raw' | 'fedex_pdf' |
+    'sp_master' | 'unknown', error_or_None).
     """
-    is_csv = (filename or '').lower().endswith('.csv')
+    name_lc = (filename or '').lower()
+
+    # FedEx invoice PDF — handled first, pandas cannot open a PDF at all.
+    if name_lc.endswith('.pdf'):
+        if not SMALL_PARCEL_ENABLED:
+            return 'unknown', 'PDF files are not accepted.'
+        ok, err = validate_fedex_pdf(file_path)
+        return ('fedex_pdf', None) if ok else ('unknown', err)
+
+    is_csv = name_lc.endswith('.csv')
     try:
         if not is_csv:
             try:
                 with pd.ExcelFile(_to_bytes(file_path)) as xl:
                     sheet_names = xl.sheet_names
+                    # Small Parcels master, uploaded by hand when the shared
+                    # folder is unavailable.
+                    if SMALL_PARCEL_ENABLED and is_small_parcel_master(sheet_names):
+                        return 'sp_master', None
                     # Carrier: has sheets matching known carrier names
                     if any(any(c.lower() in s.lower() for c in CARRIER_VENDOR_IDS)
                            for s in sheet_names):
@@ -815,8 +1911,8 @@ def classify_file(file_path, filename):
 
         # WWEX (Small Parcel) raw export — checked before PaceJet/Priority 1
         # since its own "Invoice #" / "Airbill #" columns would otherwise
-        # misfire those checks. Disabled via WWEX_SMALL_PARCEL_ENABLED.
-        if WWEX_SMALL_PARCEL_ENABLED and {'airbill #', 'scac', 'charge type 1'} <= set(cols_lower):
+        # misfire those checks. Disabled via SMALL_PARCEL_ENABLED.
+        if SMALL_PARCEL_ENABLED and {'airbill #', 'scac', 'charge type 1'} <= set(cols_lower):
             return 'wwex_raw', None
 
         # PaceJet: many Shipment* columns
@@ -829,7 +1925,8 @@ def classify_file(file_path, filename):
             return 'priority1', None
 
         return 'unknown', ('Unrecognized file — expected a Carrier Import, '
-                           'Priority 1 Pending Invoices, or PaceJet Export file.')
+                           'Priority 1 Pending Invoices, PaceJet Export, '
+                           'WWEX raw export, or FedEx invoice PDF.')
     except Exception as e:
         return 'unknown', f'Error analyzing file: {e}'
 
@@ -872,7 +1969,8 @@ def process_freight_bills(carrier_path, priority1_df, pacejet_df, shipments_df, 
     all_sheets = pd.read_excel(str(carrier_path), sheet_name=None)
 
     # Build Acumatica shipment lookup tables
-    ordernbr_lookup, shipmentnbr_lookup, tracking_lookup = build_shipments_lookups(shipments_df)
+    (ordernbr_lookup, shipmentnbr_lookup,
+     tracking_lookup, custorder_lookup) = build_shipments_lookups(shipments_df)
 
     # Build Priority 1 invoice → PRO / BOL / SO lookup
     p1_lookup = build_p1_lookup(priority1_df)
@@ -891,6 +1989,8 @@ def process_freight_bills(carrier_path, priority1_df, pacejet_df, shipments_df, 
     missing_cells = []
 
     for sheet_name, df in all_sheets.items():
+        if is_detail_sheet(sheet_name):
+            continue
         matched_carrier = next(
             (c for c in CARRIER_VENDOR_IDS if c.lower() in sheet_name.lower()), None
         )
@@ -1002,21 +2102,27 @@ def process_freight_bills(carrier_path, priority1_df, pacejet_df, shipments_df, 
             # ------------------------------------------------------------------
             elif is_wwex_fee:
                 case = 'Fee'
-                line_desc = wwex_fee_notes[len(WWEX_FEE_NOTE_PREFIX):].title()
+                # Notes hold "AUTO-FEE:<description> | <upload stamp>" — the
+                # stamp must not leak into the bill's line description.
+                line_desc = (wwex_fee_notes[len(WWEX_FEE_NOTE_PREFIX):]
+                             .split(NOTE_SEPARATOR)[0].strip().title())
 
             # ------------------------------------------------------------------
             # ALL OTHER CARRIERS — generic cascade
             # ------------------------------------------------------------------
             else:
-                match = None
-                for key in [po_sos, pronumber]:
-                    if not key:
-                        continue
-                    match = (ordernbr_lookup.get(key)
-                             or shipmentnbr_lookup.get(key)
-                             or tracking_lookup.get(key))
-                    if match:
-                        break
+                # The PRO / tracking number is the carrier's own unique key, so
+                # it decides before the PO, which is only unique per customer.
+                match = tracking_lookup.get(pronumber) if pronumber else None
+                if not match:
+                    for key in [po_sos, pronumber]:
+                        if not key:
+                            continue
+                        match = (ordernbr_lookup.get(key)
+                                 or shipmentnbr_lookup.get(key)
+                                 or custorder_lookup.get(key))
+                        if match:
+                            break
 
                 if match:
                     customer      = match['Customer']

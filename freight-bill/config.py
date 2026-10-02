@@ -31,6 +31,12 @@ CARRIER_SOURCE_DIR = Path(os.environ.get(
     'CARRIER_SOURCE_DIR',
     r'C:\Users\MANNY.DEV1\SWCorp\AP Team - Documents\AP\Carrier Bills Import\Carrier Import File - Iris'
 ))
+# Small-parcel master workbook (Fedex / WWEX flat tabs + "- SP" detail tabs).
+# Separate workbook and folder from the LTL one in CARRIER_SOURCE_DIR.
+CARRIER_SP_SOURCE_DIR = Path(os.environ.get(
+    'CARRIER_SP_SOURCE_DIR',
+    r'C:\Users\MANNY.DEV1\SWCorp\AP Team - Documents\AP\Carrier Bills Import\Carrier Import File - Small Parcels'
+))
 CARRIER_AUDIT_DIR = Path(os.environ.get(
     'CARRIER_AUDIT_DIR',
     r'C:\Users\MANNY.DEV1\SWCorp\AP Team - Documents\AP\Carrier Bills Import\Carrier Import File - Audit'
