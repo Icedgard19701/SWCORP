@@ -423,9 +423,13 @@ check de la pill en 1.7 s; factura de 351 registros idéntica celda por celda.
   `toast-in/out` usan `--toast-dy`. Quitada la regla de 1 columna de pills a ≤900px (3 por fila hasta 600px).
   Verificado a 390px en las 6 vistas: sin scroll horizontal, sin inputs < 16px.
 
+- (2026-10-02) Movimiento: toasts con línea de tiempo 6s (`.toast-timer`, su `animationend` = temporizador; pausa
+  en hover/foco y `html.tab-hidden`), FLIP en `#flash` (MutationObserver de hijos; la pila está anclada abajo, así
+  que solo se mueven los de arriba cuando sale uno de abajo), sin rebote en toasts ni tarjetas DM, sin ease-in.
+  Los diálogos conservan su entrada con rebote (regla de Componentes: diálogo = entrada con rebote).
+
 ### LIR — pendiente
-- Movimiento: toasts y diálogos con rebote (`--ease-overshoot`), sin pausa con pestaña oculta, sin FLIP en la pila;
-  revisar contra la sección Movimiento.
+- Header con `.hbtn` (Back to the remit / Setup) en vez del menú lateral de familia (`.hbtn` obsoleto).
 
 ## Registro de decisiones
 
