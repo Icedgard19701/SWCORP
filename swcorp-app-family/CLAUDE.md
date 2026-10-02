@@ -414,6 +414,10 @@ check de la pill en 1.7 s; factura de 351 registros idéntica celda por celda.
 
 ### Freight Bill — pendiente (revisado 2026-10-02)
 - Componentes propios (`.header`, `.app-frame`, `.upload-zone`) aún no migrados a `swcorp.css` (la app no lo carga; solo tokens + `app.css`).
+  **Pospuesto por el usuario (2026-10-02).** Contexto: ninguna app carga `swcorp.css`. Freight Bill, Amazon Returns,
+  ScanShip y Rebate comparten `.app-frame/.header/.side-menu/.pop-out` (código copiado entre ellas); `swcorp.css`
+  usa los nombres de LIR (`.window/.hdr`). Opciones: reescribir `swcorp.css` con los nombres de las 4 (recomendado)
+  o renombrar las 4 a los de LIR.
 - Ya resueltos (quitados de esta lista): header de familia, texto `--ink`, toasts abajo-derecha, tiers 600/1180, `html.embedded`, aviso en el flujo.
 
 ### LIR — hecho (2026-10-02)
