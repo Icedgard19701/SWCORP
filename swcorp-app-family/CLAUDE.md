@@ -78,8 +78,9 @@ el 2026-10-02: esta carpeta es la única referencia.
 - `.window` = tarjeta `min(1480px,100%)` × `min(920px, 100dvh − 2·gap)`, gap `clamp(20px,4vmin,48px)`,
   radius 20, sombra `0 8px 40px rgba(0,0,0,.18)`, fondo de página blanco.
   **Por qué:** la app antes vivía dentro de Acumatica; debe sentirse ventana sobre fondo neutro.
-- `≤1180px` ancho o `≤720px` alto, o dentro de iframe (`html.embedded`): full-bleed, sin radius ni sombra.
-  **Por qué:** en Acumatica el iframe mide ~1650×940 (1080p) o ~1100×630 (laptop); doble marco desperdicia espacio.
+- `≤1180px` ancho o `≤720px` alto: full-bleed, sin radius ni sombra. **Dentro de Acumatica se ve igual que en una
+  pestaña** (decisión del usuario 2026-10-02): iframe de 1080p (~1650×940) = tarjeta flotante; laptop (~1100×630) =
+  full-bleed. Nunca condicionar la tarjeta a `html.embedded` (se hizo por error el 2026-10-02 y el usuario lo notó).
 - La página nunca hace scroll. Solo `.main` (o la tabla interna). Overlays `position:absolute` dentro de `.window`.
 
 ### Responsive — todas las apps, 4 tiers (decisión 2026-10-01)
@@ -94,7 +95,7 @@ Toda app de la familia funciona en teléfono, compacto, escritorio y ventanas ba
 | Bajo | `≤ 820px` alto | (según ancho) | 18 / 24 | footer 12/24 |
 | Muy bajo | `≤ 720px` alto | full-bleed | 18 / 24 | zona de carga min 120, icono 36, gap 10, pills padding 10/12 |
 
-Iframe de Acumatica (`html.embedded`) = full-bleed siempre. Usar `100dvh`, nunca `100vh`.
+Iframe de Acumatica: mismas reglas de tamaño que una pestaña (tarjeta solo si > 1180×720). Usar `100dvh`, nunca `100vh`.
 Meta viewport obligatorio: `width=device-width, initial-scale=1, viewport-fit=cover` (sin `viewport-fit` la safe-area vale 0).
 Hover solo en `(hover:hover) and (pointer:fine)`.
 
@@ -449,8 +450,9 @@ Returns, en `webapp/backend` + `webapp/frontend` en Rebate; tres formas de leer 
 ### Unificación de swcorp.css (hecho 2026-10-02)
 - `swcorp.css` v1 usa los nombres de las 4 apps hermanas; las 5 apps lo cargan y borraron sus copias de reset,
   ventana, header, menú y pop-out. Efecto visible: Amazon Returns, ScanShip y Freight Bill centraban el `body` desde
-  768px, así que entre 768 y 1180px y **dentro de Acumatica** la ventana no llenaba el alto (o salía como tarjeta);
-  ahora la tarjeta flotante solo existe fuera de iframe y > 1180×720 (`html:not(.embedded)`).
+  768px, así que entre 768 y 1180px la ventana no llenaba el alto; ahora la tarjeta flotante existe solo > 1180×720
+  (también dentro de Acumatica, como antes). **Corrección:** la primera versión de v1 la quitaba dentro de Acumatica
+  (`html:not(.embedded)`); el usuario lo notó y se restauró el mismo día.
 - `swcorp.css` suma: tarjeta de celda recortada (`.hover-tip`), toast único con tipos (`.toast.warn/.error/.ok`,
   `.toast-icon/-body/-title/-detail/-x/-timer`), pantalla de celebración (`.completed`, de ScanShip).
 - Arreglado en las 3 implementaciones de la tarjeta (AR, Rebate, guía): al llegar con Tab el navegador hace scroll
@@ -514,3 +516,4 @@ Returns, en `webapp/backend` + `webapp/frontend` en Rebate; tres formas de leer 
 | 2026-10-02 | swcorp.css v1 con los nombres de las apps hermanas (`.app-frame/.header/.side-menu/.pop-out/.toast-stack`); las 5 apps lo cargan y borran sus copias | Usuario: "unifícalo" |
 | 2026-10-02 | LIR: header de familia + menú lateral (Remit / Setup); `.hbtn` eliminado | Usuario |
 | 2026-10-02 | Guías viejas por app borradas; esta carpeta es la única referencia | Usuario: "borra todo" |
+| 2026-10-02 | Dentro de Acumatica la tarjeta flotante se mantiene (mismas reglas de tamaño que una pestaña); corrige la v1 inicial | Usuario: "perdieron su vista de tipo ventana flotante" |
