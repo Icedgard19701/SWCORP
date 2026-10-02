@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SWCorp App Family</title>
+<link rel="icon" href="assets/swcorp-favicon.svg" type="image/svg+xml">
+<script>if (window.self !== window.top) document.documentElement.classList.add('embedded');</script>
+<link rel="stylesheet" href="css/swcorp-tokens.css">
+<link rel="stylesheet" href="css/swcorp.css">
+<style>
+  /* Guide-only helpers. Not part of the family stylesheet. */
+  .g-sec { padding: 28px 0; border-bottom: 1px solid var(--line-soft); }
+  .g-sec:last-of-type { border-bottom: 0; }
+  .g-sec > p.hint { margin: 2px 0 14px; max-width: 80ch; }
+  .g-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .g-sw { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .g-sw div { border: 1px solid var(--line); border-radius: var(--r-box); overflow: hidden; font-size: 12px; }
+  .g-sw i { display: block; height: 44px; }
+  .g-sw span { display: block; padding: 6px 10px; } .g-sw code { color: var(--ink-3); font: 11px var(--mono); }
+  .g-type > div { display: flex; align-items: baseline; gap: 18px; padding: 6px 0; }
+  .g-type code { width: 190px; flex: none; font: 11px var(--mono); color: var(--ink-3); }
+  .g-mini { position: relative; height: 220px; border-radius: var(--r-box); overflow: hidden; border: 1px solid var(--line); }
+  .g-toasts { position: static; align-items: flex-start; }
+  .g-toasts .toast { animation: none; }
+  .g-foot { border: 1px solid var(--line); border-radius: var(--r-box); }
+  .g-hdr { border-radius: var(--r-box); }
+</style>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<svg width="0" height="0" class="sprite" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="M3 8.5l3.2 3L13 4.5"/></symbol>
+  <symbol id="i-okc" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M5.3 8.2l1.9 1.8 3.6-3.8"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2.2l6.3 11.1H1.7z"/><path d="M8 6.5v3"/><path d="M8 11.6v.1"/></symbol>
+  <symbol id="i-block" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M5.6 5.6l4.8 4.8M10.4 5.6l-4.8 4.8"/></symbol>
+  <symbol id="i-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v3.8M8 5v.1"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 16 16"><path d="M2.5 4.5h5.5M11 4.5h2.5M2.5 8h1.5M7 8h6.5M2.5 11.5h6.5M12 11.5h1.5"/><circle cx="9.5" cy="4.5" r="1.5"/><circle cx="5.5" cy="8" r="1.5"/><circle cx="10.5" cy="11.5" r="1.5"/></symbol>
+  <symbol id="i-list" viewBox="0 0 16 16"><path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.1M2.5 8h.1M2.5 12h.1"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></symbol>
+  <symbol id="i-file" viewBox="0 0 16 16"><path d="M4 1.8h5l3 3v9.4H4z"/><path d="M9 1.8v3h3"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 16 16"><path d="M8 10.5V2.5M4.8 5.6L8 2.4l3.2 3.2"/><path d="M2.5 10.5v3h11v-3"/></symbol>
+  <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.2l7.5 4.8L5 12.8z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13.2 6.5A5.3 5.3 0 0 0 3.4 5"/><path d="M2.8 9.5a5.3 5.3 0 0 0 9.8 1.5"/><path d="M3.2 2.4V5h2.6M12.8 13.6V11h-2.6"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 9h5.8l.6-9"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M3 8h9.5M9 4.5L12.5 8 9 11.5"/></symbol>
+</svg>
+
+<div class="window">
+  <header class="hdr">
+    <img src="assets/swcorp-logo-white.svg" alt="SWCorp">
+    <span class="sep" aria-hidden="true"></span>
+    <h1>App Family Guide</h1>
+    <span class="run-chip">Version <b>v0</b> · <b>2026-10-01</b></span>
+    <span class="grow"></span>
+    <button class="menu-toggle" id="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="side-menu">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="l1"/><path class="l2"/><path class="l3"/></svg>
+    </button>
+  </header>
+  <div class="menu-scrim" id="menu-scrim"></div>
+  <nav class="side-menu" id="side-menu" aria-label="Menu" inert>
+    <p class="menu-label menu-anim" style="--i:0">Sections</p>
+    <ul class="menu-list">
+      <li class="menu-anim" style="--i:1"><a class="menu-item" href="#tokens"><span class="menu-ic"><svg class="i"><use href="#i-list"/></svg></span><span class="menu-t">Tokens<small>Color and type</small></span></a></li>
+      <li class="menu-anim" style="--i:2"><a class="menu-item" href="#components" aria-current="page"><span class="menu-ic"><svg class="i"><use href="#i-settings"/></svg></span><span class="menu-t">Components<small>Everything an app is built from</small></span></a></li>
+    </ul>
+    <p class="menu-label menu-anim" style="--i:3">Links</p>
+    <ul class="menu-list">
+      <li class="menu-anim" style="--i:4"><a class="menu-item" href="CLAUDE.md"><span class="menu-ic"><svg class="i"><use href="#i-file"/></svg></span><span class="menu-t">CLAUDE.md<small>Rules and decisions</small></span></a></li>
+    </ul>
+  </nav>
+
+  <div id="content" class="content" tabindex="-1">
+    <main class="main">
+      <div class="titlebar">
+        <div>
+          <h2>SWCorp app family</h2>
+          <p>Every internal SWCorp web app is one floating card: navy header, white body, one scrolling region, actions pinned at the bottom. This page is built with <code>swcorp.css</code> only, so what you see here is what an app gets by copying it. Rules and reasons live in <code>CLAUDE.md</code>.</p>
+        </div>
+      </div>
+
+      <!-- ===================================================== tokens -->
+      <section class="g-sec" id="tokens">
+        <h3 class="section-title">Color</h3>
+        <p class="hint">Navy is the only brand color. Greys lower volume; they never carry meaning. Meaning ladder: info navy · pending amber · warning · ok green · blocking red. Red only for hard failures.</p>
+        <div class="g-sw">
+          <div><i style="background:var(--navy)"></i><span>navy <code>#1C3D5A</code></span></div>
+          <div><i style="background:var(--navy-dark)"></i><span>navy-dark <code>#152E45</code></span></div>
+          <div><i style="background:var(--navy-50)"></i><span>navy-50 <code>#EDF2F7</code></span></div>
+          <div><i style="background:var(--surface-2)"></i><span>surface-2 <code>#F8F9FA</code></span></div>
+          <div><i style="background:var(--line)"></i><span>line <code>#DEE2E6</code></span></div>
+          <div><i style="background:var(--line-strong)"></i><span>line-strong <code>#8A96A3</code></span></div>
+          <div><i style="background:var(--ink)"></i><span>ink <code>#212529</code></span></div>
+          <div><i style="background:var(--ink-3)"></i><span>ink-3 <code>#6C757D</code></span></div>
+          <div><i style="background:var(--amber)"></i><span>amber <code>#C8A44D</code></span></div>
+          <div><i style="background:var(--ok)"></i><span>ok <code>#1E7A4A</code></span></div>
+          <div><i style="background:var(--warn-bg)"></i><span>warn-bg <code>#FFF4D6</code></span></div>
+          <div><i style="background:var(--block)"></i><span>block <code>#B42318</code></span></div>
+        </div>
+
+        <h3 class="section-title">Type</h3>
+        <p class="hint">Geist + Geist Mono, vendored (no CDN). Body 14px. 800 only for page titles and big numbers. Uppercase only at 10–11px with tracking.</p>
+        <div class="g-type">
+          <div><code>page title 20/800 navy</code><span style="font-size:20px;font-weight:800;color:var(--navy);letter-spacing:-.01em">Review debit memos</span></div>
+          <div><code>dialog title 16/800 navy</code><span style="font-size:16px;font-weight:800;color:var(--navy)">Stop processing?</span></div>
+          <div><code>app name 15/600 white</code><span style="font-size:15px;font-weight:600;background:var(--navy);color:#fff;padding:2px 8px;border-radius:4px">Freight Bill Processor</span></div>
+          <div><code>section 14/700 navy</code><span style="font-size:14px;font-weight:700;color:var(--navy)">Duplicate SO</span></div>
+          <div><code>body 13–14/400 ink</code><span>Remit 4471023 has 312 lines, 3 need a GL account.</span></div>
+          <div><code>subtitle 13/1.65 ink-3</code><span class="muted" style="font-size:13px">Upload the remittance and the invoice list.</span></div>
+          <div><code>label 10/700 upper</code><span class="label">Payment amount</span></div>
+          <div><code>figures tabular-nums</code><span class="mono">$ 22,875.85 · 9-367-42833</span></div>
+        </div>
+      </section>
+
+      <!-- ===================================================== components -->
+      <section class="g-sec" id="components">
+        <h3 class="section-title">Header</h3>
+        <p class="hint">Logo white 26px · divider · app name · optional context chip · grow · the menu button, alone in the right corner. Views and links live in the side menu (try the button at the top of this page). The header never scrolls.</p>
+        <header class="hdr g-hdr">
+          <img src="assets/swcorp-logo-white.svg" alt="SWCorp">
+          <span class="sep" aria-hidden="true"></span>
+          <h1>Freight Bill Processor</h1>
+          <span class="grow"></span>
+          <span class="menu-toggle" aria-hidden="true"><svg viewBox="0 0 24 24"><path class="l1"/><path class="l2"/><path class="l3"/></svg></span>
+        </header>
+      </section>
+
+      <section class="g-sec">
+        <h3 class="section-title">Buttons</h3>
+        <p class="hint">36px tall, radius 8, 13/600. One primary per screen. Press scales to .97.</p>
+        <div class="g-row">
+          <button class="btn primary"><svg class="i"><use href="#i-play"/></svg>Process</button>
+          <button class="btn sec"><svg class="i"><use href="#i-refresh"/></svg>Refresh</button>
+          <button class="btn danger"><svg class="i"><use href="#i-trash"/></svg>Remove</button>
+          <button class="btn primary" aria-busy="true"><span class="spin"></span>Processing…</button>
+          <button class="btn primary" disabled>Disabled</button>
+          <button class="btn sec small">Small</button>
+          <button class="linkbtn">Text link</button>
+        </div>
+      </section>
+
+      <section class="g-sec">
+        <h3 class="section-title">Forms</h3>
+        <div class="form-grid">
+          <div class="field"><label for="f1">Check number</label><input id="f1" value="4471023"><div class="hint">From the remittance header.</div></div>
+          <div class="field"><label for="f2">Carrier</label><select id="f2"><option>FedEx</option><option>UPS</option></select></div>
+          <div class="field"><label for="f3">GL account</label><input id="f3" aria-invalid="true" value="64009"><div class="hint c-block">Unknown account.</div></div>
+        </div>
+        <div class="toolbar">
+          <div class="tabs" role="tablist">
+            <button class="tab" role="tab" aria-selected="true">All <span class="c">312</span></button>
+            <button class="tab" role="tab" aria-selected="false">Matched <span class="c">298</span></button>
+            <button class="tab" role="tab" aria-selected="false">Needs GL <span class="c">3</span></button>
+          </div>
+          <div class="chips">
+            <button class="chip" aria-pressed="true"><svg class="i c-warn"><use href="#i-warn"/></svg>Warnings <b>11</b></button>
+            <button class="chip" aria-pressed="false">Excluded <b>2</b></button>
+          </div>
+          <label class="search"><svg class="i"><use href="#i-search"/></svg><input placeholder="Search DM#, PO, SO"></label>
+        </div>
+        <div class="g-row"><label class="cbx"><input type="checkbox" checked aria-label="Include"><svg viewBox="0 0 18 18"><path d="M5 9.2l2.6 2.4L13 6.2"/></svg></label><span>Include in credit memo</span></div>
+      </section>
+
+      <section class="g-sec">
+        <h3 class="section-title">Status</h3>
+        <div class="g-row">
+          <span class="badge ok"><svg class="i"><use href="#i-okc"/></svg>Matched</span>
+          <span class="badge warn"><svg class="i"><use href="#i-warn"/></svg>Needs GL</span>
+          <span class="badge block"><svg class="i"><use href="#i-block"/></svg>Blocking</span>
+          <span class="badge off">Excluded</span>
+          <span class="tag">DM151524</span>
+        </div>
+        <div class="notice"><svg class="i"><use href="#i-info"/></svg><span>Info: OData snapshot from 09:42. Refresh takes about 75 seconds.</span></div>
+        <div class="notice warn"><svg class="i"><use href="#i-warn"/></svg><span><b>Missing input.</b> Upload the invoice list to continue. Not an error.</span></div>
+        <div class="notice error"><svg class="i"><use href="#i-block"/></svg><span>The file is not a FedEx invoice PDF.</span></div>
+        <div class="notice ok"><svg class="i"><use href="#i-okc"/></svg><span>All 312 lines matched.</span></div>
+      </section>
+
+      <section class="g-sec">
+        <h3 class="section-title">Panels and upload</h3>
+        <div class="tiles">
+          <div class="tile ok"><h3><svg class="i"><use href="#i-okc"/></svg>Remittance</h3><div class="meta">Lowes Win-Denied Disputes 4.xlsm · 312 lines</div></div>
+          <label class="drop"><input type="file"><svg class="i"><use href="#i-upload"/></svg>Drop the invoice list or <b>browse</b><div class="hint">.xlsx up to 50 MB</div></label>
+        </div>
+      </section>
+
+      <section class="g-sec">
+        <h3 class="section-title">Input pills</h3>
+        <p class="hint">One per file or source, under the drop zone. 70px tall, 24px ring, 10px source over 11px detail. The detail links to where the file comes from whenever possible (hover underlines). States: rest (= pending, no extra colour) · loading · done · failed. A loaded file that is not used yet shows a × on hover to take it back; the check retracts.</p>
+        <ul class="slots flex">
+          <li class="slot"><span class="slot-mark"><svg viewBox="0 0 24 24"><path d="M7.5 12.4l3 2.9 6-6.3"/></svg></span><span class="slot-text"><span class="slot-top">Excel</span><a class="slot-main" href="#" target="_blank" rel="noopener">Carrier Import File</a></span></li>
+          <li class="slot"><span class="slot-mark"><svg viewBox="0 0 24 24"><path d="M7.5 12.4l3 2.9 6-6.3"/></svg></span><span class="slot-text"><span class="slot-top">Priority 1</span><a class="slot-main" href="#" target="_blank" rel="noopener">Customer Invoices</a></span></li>
+          <li class="slot loading"><span class="slot-mark"><svg viewBox="0 0 24 24"><path d="M7.5 12.4l3 2.9 6-6.3"/></svg></span><span class="slot-text"><span class="slot-top">Acumatica</span><a class="slot-main" href="#" target="_blank" rel="noopener">ShipmentsSubAc - JJ</a></span></li>
+        </ul>
+        <ul class="slots flex" style="margin-top:12px">
+          <li class="slot done"><span class="slot-mark"><svg viewBox="0 0 24 24"><path d="M7.5 12.4l3 2.9 6-6.3"/></svg></span><span class="slot-text"><span class="slot-top">PaceJet</span><a class="slot-main" href="#" target="_blank" rel="noopener">BulkExport</a></span><button type="button" class="slot-x" aria-label="Remove PaceJet export"><svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button></li>
+          <li class="slot done"><span class="slot-mark"><svg viewBox="0 0 24 24"><path d="M7.5 12.4l3 2.9 6-6.3"/></svg></span><span class="slot-text"><span class="slot-top">FedEx</span><span class="slot-main">Ground Invoice</span></span></li>
+          <li class="slot failed"><span class="slot-mark"><svg class="x" viewBox="0 0 24 24"><path d="M8.5 8.5l7 7M15.5 8.5l-7 7"/></svg></span><span class="slot-text"><span class="slot-top">Acumatica</span><span class="slot-main">Could not reach Acumatica</span></span></li>
+        </ul>
+      </section>
+
+      <section class="g-sec">
+        <h3 class="section-title">Table</h3>
+        <p class="hint">Navy header, 10px uppercase centered titles, 38px rows, tabular figures, row tint for state. Thousands of rows: Tabulator with the same look, paged/filtered on the server.</p>
+        <div class="grid-wrap">
+          <table class="grid">
+            <thead><tr><th>DM#</th><th>PO</th><th>Status</th><th>Amount</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">DM151524</td><td class="mono">82714433</td><td><span class="badge ok"><svg class="i"><use href="#i-okc"/></svg>Matched</span></td><td><span class="acct"><i>$</i><span>1,204.10</span></span></td></tr>
+              <tr class="warn"><td class="mono">DM151662</td><td class="mono">82714501</td><td><span class="badge warn"><svg class="i"><use href="#i-warn"/></svg>Needs GL</span></td><td><span class="acct"><i>$</i><span>(318.00)</span></span></td></tr>
+              <tr aria-selected="true"><td class="mono">DM153377</td><td class="mono">82715020</td><td><span class="badge ok"><svg class="i"><use href="#i-okc"/></svg>Matched</span></td><td><span class="acct"><i>$</i><span>96.45</span></span></td></tr>
+              <tr class="block"><td class="mono">DM154034</td><td class="mono">—</td><td><span class="badge block"><svg class="i"><use href="#i-block"/></svg>No SO</span></td><td><span class="acct"><i>$</i><span>2,010.00</span></span></td></tr>
+            </tbody>
+            <tfoot><tr><td colspan="3">Total</td><td><span class="acct"><i>$</i><span>2,992.55</span></span></td></tr></tfoot>
+          </table>
+        </div>
+      </section>
+
+      <section class="g-sec">
+        <h3 class="section-title">Empty, loading, processing</h3>
+        <div class="tiles">
+          <div class="tile"><div class="empty"><svg class="i"><use href="#i-file"/></svg><b>No invoices yet</b>Upload a FedEx PDF to start.</div></div>
+          <div class="tile" style="justify-content:center;align-items:center"><div class="skel"><i></i><i></i><i></i></div></div>
+          <div class="g-mini"><div class="proc-screen show"><div class="loader-shape"></div><div class="process-text">Reading invoices…</div></div></div>
+        </div>
+      </section>
+
+      <section class="g-sec">
+        <h3 class="section-title">Toasts and dialog</h3>
+        <p class="hint">Every floating message is a toast in one bottom-right stack, 3px edge by meaning. Every toast leaves after 6s; the line along its foot shows the time left and pauses on hover. A pending action (amber, e.g. "Additional Files Required") also leaves as soon as it is done. Never top-centre, never a bar inside the screen. Dialog: native &lt;dialog&gt;, blurred navy backdrop.</p>
+        <div class="toasts g-toasts">
+          <div class="toast ok"><svg class="i"><use href="#i-okc"/></svg><span><b>Saved.</b> Setup updated.</span><button class="toast-x" aria-label="Dismiss"><svg class="i"><use href="#i-x"/></svg></button></div>
+          <div class="toast warn"><svg class="i"><use href="#i-warn"/></svg><span><b>Additional Files Required</b><br>Upload the Priority 1 Pending Invoices and PaceJet BulkExport files.</span><button class="toast-x" aria-label="Dismiss"><svg class="i"><use href="#i-x"/></svg></button></div>
+          <div class="toast error"><svg class="i"><use href="#i-block"/></svg><span>Acumatica did not answer.</span><button class="toast-x" aria-label="Dismiss"><svg class="i"><use href="#i-x"/></svg></button></div>
+        </div>
+        <div class="g-row" style="margin-top:14px">
+          <button class="btn sec" id="open-dlg">Open dialog</button>
+          <button class="btn sec" id="open-toast">Show toast</button>
+        </div>
+      </section>
+
+      <section class="g-sec">
+        <h3 class="section-title">Footer bar</h3>
+        <div class="foot g-foot"><div class="msg"><svg class="i c-warn"><use href="#i-warn"/></svg><span><b>3</b> lines need a GL account.</span></div><span class="grow"></span><span class="total">Total <b>$ 2,992.55</b></span><button class="btn primary">Build CM<svg class="i"><use href="#i-arrow"/></svg></button></div>
+        <div class="foot done g-foot" style="margin-top:10px"><div class="msg"><svg class="i"><use href="#i-okc"/></svg><span>Ready to export.</span></div><span class="grow"></span><button class="btn primary">Download</button></div>
+      </section>
+      <div class="spacer"></div>
+    </main>
+    <footer class="foot"><div class="msg">Reference page. Copy <b style="color:var(--ink)">swcorp.css</b> into a new app; never edit tokens per app.</div><span class="grow"></span><a class="btn sec" href="CLAUDE.md">Read CLAUDE.md</a></footer>
+  </div>
+</div>
+
+<dialog class="dialog" id="dlg">
+  <h3>Stop processing?</h3>
+  <p>The invoices read so far are kept. You can start again from the same files.</p>
+  <div class="dialog-actions"><button class="btn sec" data-close>Keep going</button><button class="btn primary" data-close>Stop</button></div>
+</dialog>
+<div class="toasts" id="flash" aria-live="polite"></div>
+
+<script>
+  // Side menu (same behaviour as the apps): circle out of the button, Esc /
+  // click outside / pick closes, focus returns to the button.
+  const menuBtn = document.getElementById('menu-toggle'), menu = document.getElementById('side-menu'), scrim = document.getElementById('menu-scrim');
+  // Circle centred on the button, measured; radius to the panel's far corner.
+  function placeCircle() {
+    const r = menu.getBoundingClientRect(), b = menuBtn.getBoundingClientRect();
+    const cx = b.left + b.width / 2 - r.left, cy = b.top + b.height / 2 - r.top;
+    menu.style.setProperty('--cx', cx + 'px'); menu.style.setProperty('--cy', cy + 'px');
+    menu.style.setProperty('--menu-r', Math.ceil(Math.hypot(cx, r.height - cy)) + 2 + 'px');
+  }
+  placeCircle(); addEventListener('resize', placeCircle);
+  function setMenu(open) {
+    if (open === menu.classList.contains('open')) return;
+    if (open) placeCircle();
+    menu.classList.toggle('open', open); scrim.classList.toggle('open', open);
+    document.body.classList.toggle('menu-open', open); menu.inert = !open;
+    menuBtn.setAttribute('aria-expanded', String(open)); menuBtn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    if (open) (menu.querySelector('[aria-current]') || menu.querySelector('.menu-item')).focus({ preventScroll: true });
+    else if (menu.contains(document.activeElement)) menuBtn.focus();
+  }
+  menuBtn.onclick = () => setMenu(!menu.classList.contains('open'));
+  scrim.onclick = () => setMenu(false);
+  menu.querySelectorAll('.menu-item').forEach(a => a.addEventListener('click', () => setMenu(false)));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') setMenu(false); });
+  const dlg = document.getElementById('dlg');
+  document.getElementById('open-dlg').onclick = () => dlg.showModal();
+  dlg.querySelectorAll('[data-close]').forEach(b => b.onclick = () => {
+    dlg.classList.add('closing');
+    setTimeout(() => { dlg.classList.remove('closing'); dlg.close(); }, 140);
+  });
+  document.getElementById('open-toast').onclick = () => {
+    const t = document.createElement('div');
+    t.className = 'toast ok';
+    t.innerHTML = '<svg class="i"><use href="#i-okc"/></svg><span><b>Done.</b> 312 lines processed.</span>';
+    const bar = document.createElement('i'); bar.className = 'toast-timer'; t.append(bar);
+    bar.onanimationend = () => { t.classList.add('leaving'); setTimeout(() => t.remove(), 160); };
+    document.getElementById('flash').append(t);
+  };
+</script>
+</body>
+</html>
