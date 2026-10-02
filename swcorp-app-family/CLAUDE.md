@@ -14,8 +14,9 @@ embebidas en Acumatica). Esta carpeta es la **fuente de verdad visual** de la fa
 
 La carpeta imita `static/` de una app (`css/` y `fonts/` hermanas), así los CSS se copian sin tocar rutas.
 
-Versión: **v0 (2026-10-01)** — extraída de Lowe's Invoice Reconciler. Se actualiza con cada
-indicación del usuario mientras se estandariza Freight Bill.
+Versión: **v1 (2026-10-02)** — v0 se extrajo de Lowe's Invoice Reconciler; v1 unifica los nombres de clase
+con los que usan las apps (`.app-frame`, `.header`, `.side-menu`, `.pop-out`, `.toast-stack`) y **las 5 apps cargan
+`swcorp.css`**. Se actualiza con cada indicación del usuario.
 
 ## App de referencia
 
@@ -27,9 +28,9 @@ el 2026-10-02: esta carpeta es la única referencia.
 ## Cómo usar en una app nueva o existente
 
 1. Copiar `css/*` a `static/css/` y `fonts/*` a `static/fonts/` tal cual. Logo y favicon a `static/`.
-2. Orden de carga: `swcorp-tokens.css` → `swcorp.css` → `app.css` (reglas propias de la app).
-   App existente con estructura propia (p. ej. Freight Bill): solo `swcorp-tokens.css` + su `app.css`
-   usando los tokens, hasta migrar a los componentes. **Prohibido** `:root` con colores propios en una app:
+2. Orden de carga: `swcorp-tokens.css` → `swcorp.css` → `app.css` (solo reglas propias de la app; nunca copias
+   de reglas de `swcorp.css`: si una regla de familia no sirve, se cambia aquí y se propaga). React/Vite (Rebate):
+   los tres se importan en `main.jsx` en ese orden y `#root { display: contents }`. **Prohibido** `:root` con colores propios en una app:
    si falta un color, se agrega a `swcorp-tokens.css` y se propaga. `:root` de la app solo para valores locales (safe-area).
 3. **JS siempre en archivos externos** (`static/js/app.js`). Valores del servidor por un `<script>` mínimo
    antes del archivo: `window.<APP>_CONFIG = { base: {{ base_url|tojson }}, … }`. Nada de `{{ }}` dentro del `.js`.
@@ -54,15 +55,20 @@ el 2026-10-02: esta carpeta es la única referencia.
 <body>
   <a class="skip" href="#content">Skip to content</a>
   <svg class="sprite">…symbols…</svg>
-  <div class="window">
-    <header class="hdr">logo · .sep · h1 app · (.run-chip) · .grow · .hbtn…</header>
-    <div id="content" class="content" tabindex="-1">
-      <main class="main">  .titlebar(h2 + p) · contenido · .spacer </main>
-      <footer class="foot"> .msg · .grow · .total · .btn.primary </footer>   <!-- opcional -->
+  <div class="app-frame">
+    <header class="header">a.header-home(img.header-logo-img) · .header-sep · .header-title · (.run-chip) · .header-grow · button.menu-toggle</header>
+    <div class="menu-scrim"></div>
+    <nav class="side-menu" inert> .menu-body > .menu-glide + ul.menu-list > li.menu-anim > a.menu-item </nav>
+    <div class="app-body">               <!-- o .content directo (LIR) -->
+      <div id="content" class="content" tabindex="-1">
+        <main class="main">  .titlebar(h2 + p) · contenido · .spacer </main>
+        <footer class="foot"> .msg · .grow · .total · .btn.primary </footer>   <!-- opcional -->
+      </div>
     </div>
-    <div class="proc-screen">…</div>       <!-- overlays: absolute, dentro de .window -->
+    <div class="proc-screen">…</div>       <!-- overlays: absolute, dentro de .app-frame -->
   </div>
-  <div id="flash" class="toasts" aria-live="assertive"></div>
+  <a class="pop-out" target="_blank" rel="noopener" aria-label="Open … in a new tab">↗</a>   <!-- solo visible embebida -->
+  <div id="flash" class="toast-stack" aria-live="assertive"></div>
 </body>
 ```
 
@@ -147,7 +153,9 @@ pantallas y apps: lo que cambia de una pantalla a otra es el texto, no el icono.
   desvanece al salir; la baldosa solo colorea su borde (sin moverse). **Una sola lista**, sin
   títulos de grupo ("Views", "Links"): vistas primero, enlaces externos después (con ↗). Solo con mouse (`hover:hover`), nada de inclinaciones 3D,
   imanes ni cursores custom (herramienta interna, criterio taste-skill: movimiento con propósito).
-- `.hbtn` (acciones con texto en el header) queda obsoleto; LIR debe migrar.
+- `.hbtn` (acciones con texto en el header) eliminado de la familia (2026-10-02); LIR ya usa el menú lateral.
+- **Ningún elemento del header lleva `view-transition-name`** ni z-index: un nombre lo vuelve contexto de
+  apilamiento y el botón de menú queda bajo el panel abierto (pasó en LIR).
 
 ### Color
 - Navy `#1C3D5A` único color de marca. Texto base `--ink` `#212529`; títulos en navy.
@@ -315,6 +323,32 @@ pantallas y apps: lo que cambia de una pantalla a otra es el texto, no el icono.
 Medido en Freight Bill (2026-10-01): GI completo 158 017 filas en 69.7 s → filtrado 337 filas en 5.7 s;
 check de la pill en 1.7 s; factura de 351 registros idéntica celda por celda.
 
+## Organización de proyectos (recomendación 2026-10-02, aún no aplicada)
+
+Hoy cada app se organiza distinto (código en la raíz en Freight Bill y ScanShip, en `WebApp/` en LIR y Amazon
+Returns, en `webapp/backend` + `webapp/frontend` en Rebate; tres formas de leer configuración). Objetivo común:
+
+```
+<app>/
+  WebApp/            app.py (o main.py), templates/, static/{css,js,img,fonts}
+  tests/             regresión con datos sintéticos (nunca cifras reales en repos públicos)
+  deploy/            setup_iis.ps1, sync-family.ps1
+  docs/              notas de la app (sin datos reales)
+  data/              uploads/, output/, logs/   (ignorado por git)
+  .venv/             (ignorado) — web.config apunta a este python, no a uno global
+  requirements.txt · .env.example · web.config.example · README.md
+```
+
+- **Familia compartida:** esta carpeta como repo propio; cada app recibe copias de `css/`, `fonts/` y `assets/` con un
+  script (`deploy/sync-family.ps1`) que también compara hashes, para que ninguna copia diverja (hoy dos favicons
+  difieren). Sin submódulos ni carpeta compartida servida por IIS: cada repo queda autocontenido.
+- **Logos y SVG:** la fuente única es `assets/` (blanco, navy, favicon). Los originales de diseño (logo principal y
+  cuadrado) deben vivir solo en `assets/source/`; los iconos de cada menú, en el `static/img/` de su app.
+- **Secretos:** fuera de los repos, en una carpeta del usuario del servidor con permisos restringidos, un `.env` por
+  app; la app lo localiza por una variable de entorno puesta en `web.config`. Se versionan solo `.env.example` y
+  `web.config.example`; `.env`, `*.secret`, `credentials.json` y `web.config` en el `.gitignore` de todas.
+  Nunca secretos escritos en `config.py`.
+
 ## Preferencias del usuario (se va llenando)
 
 - Responder en español, conciso.
@@ -412,12 +446,23 @@ check de la pill en 1.7 s; factura de 351 registros idéntica celda por celda.
 - Pendiente: `web.config` usa `last-touched:` en vez de la línea `Last deploy:` de familia; cambiarla en el próximo
   deploy de Python (editarla recicla la app). Detalles de las pills sin link (no se sabe de dónde sale cada archivo).
 
+### Unificación de swcorp.css (hecho 2026-10-02)
+- `swcorp.css` v1 usa los nombres de las 4 apps hermanas; las 5 apps lo cargan y borraron sus copias de reset,
+  ventana, header, menú y pop-out. Efecto visible: Amazon Returns, ScanShip y Freight Bill centraban el `body` desde
+  768px, así que entre 768 y 1180px y **dentro de Acumatica** la ventana no llenaba el alto (o salía como tarjeta);
+  ahora la tarjeta flotante solo existe fuera de iframe y > 1180×720 (`html:not(.embedded)`).
+- `swcorp.css` suma: tarjeta de celda recortada (`.hover-tip`), toast único con tipos (`.toast.warn/.error/.ok`,
+  `.toast-icon/-body/-title/-detail/-x/-timer`), pantalla de celebración (`.completed`, de ScanShip).
+- Arreglado en las 3 implementaciones de la tarjeta (AR, Rebate, guía): al llegar con Tab el navegador hace scroll
+  y el scroll la cerraba; ahora una celda con foco conserva su tarjeta.
+- Deploy: **Flask sin `TEMPLATES_AUTO_RELOAD` (ScanShip) cachea templates**: un cambio de template exige reciclar
+  (`Last deploy` en web.config). ScanShip estuvo ~5 min sin estilos de shell por eso.
+- Pendiente: las tarjetas de toast de Freight Bill, Amazon Returns y ScanShip siguen con nombres propios
+  (`.err-fixed-toast`, `.err-toast-*`, `.notice-bar`); migrarlas a `.toast` de familia (JS + CSS por app).
+
 ### Freight Bill — pendiente (revisado 2026-10-02)
-- Componentes propios (`.header`, `.app-frame`, `.upload-zone`) aún no migrados a `swcorp.css` (la app no lo carga; solo tokens + `app.css`).
-  **Pospuesto por el usuario (2026-10-02).** Contexto: ninguna app carga `swcorp.css`. Freight Bill, Amazon Returns,
-  ScanShip y Rebate comparten `.app-frame/.header/.side-menu/.pop-out` (código copiado entre ellas); `swcorp.css`
-  usa los nombres de LIR (`.window/.hdr`). Opciones: reescribir `swcorp.css` con los nombres de las 4 (recomendado)
-  o renombrar las 4 a los de LIR.
+- Toasts con nombres propios (ver arriba). Ya resueltos: header de familia, texto `--ink`, toasts abajo-derecha,
+  tiers 600/1180, `html.embedded`, aviso en el flujo, carga de `swcorp.css`, favicon solo SWCorp.
 - Ya resueltos (quitados de esta lista): header de familia, texto `--ink`, toasts abajo-derecha, tiers 600/1180, `html.embedded`, aviso en el flujo.
 
 ### LIR — hecho (2026-10-02)
@@ -432,8 +477,10 @@ check de la pill en 1.7 s; factura de 351 registros idéntica celda por celda.
   que solo se mueven los de arriba cuando sale uno de abajo), sin rebote en toasts ni tarjetas DM, sin ease-in.
   Los diálogos conservan su entrada con rebote (regla de Componentes: diálogo = entrada con rebote).
 
-### LIR — pendiente
-- Header con `.hbtn` (Back to the remit / Setup) en vez del menú lateral de familia (`.hbtn` obsoleto).
+### LIR — hecho (2026-10-02, header)
+- Header de familia + menú lateral (Remit / Setup; el logo va a la remit, nunca a la raíz, que crea un workspace
+  nuevo) + pop-out. Carga `swcorp-tokens.css` y `swcorp.css`; su `:root` propio, fuentes, reset, ventana y header
+  se borraron de `app.css` (`--muted-bg` → `--surface-3`). Toasts en `.toast-stack` (tarjeta propia aún).
 
 ## Registro de decisiones
 
@@ -464,3 +511,6 @@ check de la pill en 1.7 s; factura de 351 registros idéntica celda por celda.
 | 2026-10-01 | Tarjeta propia para el valor completo de una celda recortada = excepción permitida, accesible con teclado (AmazonReturns, opción B) | Usuario |
 | 2026-10-01 | Subtítulos: una línea, inglés, minimalista ("Validates carrier invoices against Acumatica and PaceJet, ready to import.") | Usuario |
 | 2026-10-02 | Colores MatchType de Rebate (`--match-*`) pasan a `swcorp-tokens.css`: ninguna app define colores propios | Estandarización Rebate |
+| 2026-10-02 | swcorp.css v1 con los nombres de las apps hermanas (`.app-frame/.header/.side-menu/.pop-out/.toast-stack`); las 5 apps lo cargan y borran sus copias | Usuario: "unifícalo" |
+| 2026-10-02 | LIR: header de familia + menú lateral (Remit / Setup); `.hbtn` eliminado | Usuario |
+| 2026-10-02 | Guías viejas por app borradas; esta carpeta es la única referencia | Usuario: "borra todo" |

@@ -21,8 +21,12 @@
   .g-type > div { display: flex; align-items: baseline; gap: 18px; padding: 6px 0; }
   .g-type code { width: 190px; flex: none; font: 11px var(--mono); color: var(--ink-3); }
   .g-mini { position: relative; height: 220px; border-radius: var(--r-box); overflow: hidden; border: 1px solid var(--line); }
-  .g-toasts { position: static; align-items: flex-start; }
+  .g-toasts { position: static; align-items: flex-start; max-width: 460px; }
   .g-toasts .toast { animation: none; }
+  .g-toasts .toast-timer { animation-play-state: paused; }
+  .g-mini .completed { display: flex; }
+  .tile .skel { width: 100%; }
+  .g-tipcell { max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .g-foot { border: 1px solid var(--line); border-radius: var(--r-box); }
   .g-hdr { border-radius: var(--r-box); }
 </style>
@@ -47,30 +51,30 @@
   <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M3 8h9.5M9 4.5L12.5 8 9 11.5"/></symbol>
 </svg>
 
-<div class="window">
-  <header class="hdr">
-    <img src="assets/swcorp-logo-white.svg" alt="SWCorp">
-    <span class="sep" aria-hidden="true"></span>
-    <h1>App Family Guide</h1>
-    <span class="run-chip">Version <b>v0</b> · <b>2026-10-01</b></span>
-    <span class="grow"></span>
+<div class="app-frame">
+  <header class="header">
+    <a class="header-home" href="#content" aria-label="SWCorp, go to the top of the guide"><img class="header-logo-img" src="assets/swcorp-logo-white.svg" alt=""></a>
+    <span class="header-sep" aria-hidden="true"></span>
+    <span class="header-title">App Family Guide</span>
+    <span class="run-chip">Version <b>v1</b> · <b>2026-10-02</b></span>
+    <span class="header-grow"></span>
     <button class="menu-toggle" id="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="side-menu">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path class="l1"/><path class="l2"/><path class="l3"/></svg>
     </button>
   </header>
   <div class="menu-scrim" id="menu-scrim"></div>
   <nav class="side-menu" id="side-menu" aria-label="Menu" inert>
-    <p class="menu-label menu-anim" style="--i:0">Sections</p>
-    <ul class="menu-list">
-      <li class="menu-anim" style="--i:1"><a class="menu-item" href="#tokens"><span class="menu-ic"><svg class="i"><use href="#i-list"/></svg></span><span class="menu-t">Tokens<small>Color and type</small></span></a></li>
-      <li class="menu-anim" style="--i:2"><a class="menu-item" href="#components" aria-current="page"><span class="menu-ic"><svg class="i"><use href="#i-settings"/></svg></span><span class="menu-t">Components<small>Everything an app is built from</small></span></a></li>
-    </ul>
-    <p class="menu-label menu-anim" style="--i:3">Links</p>
-    <ul class="menu-list">
-      <li class="menu-anim" style="--i:4"><a class="menu-item" href="CLAUDE.md"><span class="menu-ic"><svg class="i"><use href="#i-file"/></svg></span><span class="menu-t">CLAUDE.md<small>Rules and decisions</small></span></a></li>
-    </ul>
+    <div class="menu-body">
+      <span class="menu-glide" aria-hidden="true"></span>
+      <ul class="menu-list">
+        <li class="menu-anim" style="--i:0"><a class="menu-item" href="#tokens"><span class="menu-ic"><svg class="i"><use href="#i-list"/></svg></span><span class="menu-t">Tokens<small>Color and type</small></span></a></li>
+        <li class="menu-anim" style="--i:1"><a class="menu-item" href="#components" aria-current="page"><span class="menu-ic"><svg class="i"><use href="#i-settings"/></svg></span><span class="menu-t">Components<small>Everything an app is built from</small></span></a></li>
+        <li class="menu-anim" style="--i:2"><a class="menu-item" href="CLAUDE.md"><span class="menu-ic"><svg class="i"><use href="#i-file"/></svg></span><span class="menu-t">CLAUDE.md<small>Rules and decisions</small></span><svg class="menu-ext" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3L5 11"/></svg></a></li>
+        </ul>
+    </div>
   </nav>
 
+  <div class="app-body">
   <div id="content" class="content" tabindex="-1">
     <main class="main">
       <div class="titlebar">
@@ -116,12 +120,12 @@
       <!-- ===================================================== components -->
       <section class="g-sec" id="components">
         <h3 class="section-title">Header</h3>
-        <p class="hint">Logo white 26px · divider · app name · optional context chip · grow · the menu button, alone in the right corner. Views and links live in the side menu (try the button at the top of this page). The header never scrolls.</p>
-        <header class="hdr g-hdr">
-          <img src="assets/swcorp-logo-white.svg" alt="SWCorp">
-          <span class="sep" aria-hidden="true"></span>
-          <h1>Freight Bill Processor</h1>
-          <span class="grow"></span>
+        <p class="hint">.header-home (white logo 26px, goes to the main screen) · .header-sep · .header-title · optional .run-chip · .header-grow · the menu button, alone in the right corner. Views and links live in the side menu, one list (try the button at the top of this page). Inside Acumatica only logo + menu, plus the pop-out bubble. The header never scrolls.</p>
+        <header class="header g-hdr">
+          <span class="header-home"><img class="header-logo-img" src="assets/swcorp-logo-white.svg" alt="SWCorp"></span>
+          <span class="header-sep" aria-hidden="true"></span>
+          <span class="header-title">Freight Bill Processor</span>
+          <span class="header-grow"></span>
           <span class="menu-toggle" aria-hidden="true"><svg viewBox="0 0 24 24"><path class="l1"/><path class="l2"/><path class="l3"/></svg></span>
         </header>
       </section>
@@ -157,7 +161,7 @@
             <button class="chip" aria-pressed="true"><svg class="i c-warn"><use href="#i-warn"/></svg>Warnings <b>11</b></button>
             <button class="chip" aria-pressed="false">Excluded <b>2</b></button>
           </div>
-          <label class="search"><svg class="i"><use href="#i-search"/></svg><input placeholder="Search DM#, PO, SO"></label>
+          <label class="search tuck" id="g-tuck"><svg class="i"><use href="#i-search"/></svg><input aria-label="Search DM#, PO, SO" placeholder="Search DM#, PO, SO"><button type="button" class="search-x" aria-label="Clear search" hidden><svg class="i"><use href="#i-x"/></svg></button></label>
         </div>
         <div class="g-row"><label class="cbx"><input type="checkbox" checked aria-label="Include"><svg viewBox="0 0 18 18"><path d="M5 9.2l2.6 2.4L13 6.2"/></svg></label><span>Include in credit memo</span></div>
       </section>
@@ -202,12 +206,12 @@
 
       <section class="g-sec">
         <h3 class="section-title">Table</h3>
-        <p class="hint">Navy header, 10px uppercase centered titles, 38px rows, tabular figures, row tint for state. Thousands of rows: Tabulator with the same look, paged/filtered on the server.</p>
+        <p class="hint">Navy header, 10px uppercase centered titles that wrap, 38px rows, tabular figures, row tint for state. Thousands of rows: Tabulator with the same look, paged/filtered on the server. A cell cut off with "…" shows its full value in the app's own card on hover or keyboard focus (first cell); never title="".</p>
         <div class="grid-wrap">
           <table class="grid">
             <thead><tr><th>DM#</th><th>PO</th><th>Status</th><th>Amount</th></tr></thead>
             <tbody>
-              <tr><td class="mono">DM151524</td><td class="mono">82714433</td><td><span class="badge ok"><svg class="i"><use href="#i-okc"/></svg>Matched</span></td><td><span class="acct"><i>$</i><span>1,204.10</span></span></td></tr>
+              <tr><td class="mono"><div class="g-tipcell" tabindex="0" data-tip="DM151524 · Lowe's store 1803 · Return to vendor, damaged in transit (photos attached)">DM151524 · Lowe's store 1803 · Return to vendor, damaged in transit (photos attached)</div></td><td class="mono">82714433</td><td><span class="badge ok"><svg class="i"><use href="#i-okc"/></svg>Matched</span></td><td><span class="acct"><i>$</i><span>1,204.10</span></span></td></tr>
               <tr class="warn"><td class="mono">DM151662</td><td class="mono">82714501</td><td><span class="badge warn"><svg class="i"><use href="#i-warn"/></svg>Needs GL</span></td><td><span class="acct"><i>$</i><span>(318.00)</span></span></td></tr>
               <tr aria-selected="true"><td class="mono">DM153377</td><td class="mono">82715020</td><td><span class="badge ok"><svg class="i"><use href="#i-okc"/></svg>Matched</span></td><td><span class="acct"><i>$</i><span>96.45</span></span></td></tr>
               <tr class="block"><td class="mono">DM154034</td><td class="mono">—</td><td><span class="badge block"><svg class="i"><use href="#i-block"/></svg>No SO</span></td><td><span class="acct"><i>$</i><span>2,010.00</span></span></td></tr>
@@ -218,21 +222,23 @@
       </section>
 
       <section class="g-sec">
-        <h3 class="section-title">Empty, loading, processing</h3>
+        <h3 class="section-title">Empty, loading, processing, completed</h3>
         <div class="tiles">
           <div class="tile"><div class="empty"><svg class="i"><use href="#i-file"/></svg><b>No invoices yet</b>Upload a FedEx PDF to start.</div></div>
           <div class="tile" style="justify-content:center;align-items:center"><div class="skel"><i></i><i></i><i></i></div></div>
           <div class="g-mini"><div class="proc-screen show"><div class="loader-shape"></div><div class="process-text">Reading invoices…</div></div></div>
+          <div class="g-mini"><div class="completed show" role="status"><div class="completed-ring"><div class="completed-dot"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></div></div><div class="completed-title">Order Completed</div><div class="completed-ref">SO123456</div></div></div>
         </div>
       </section>
 
       <section class="g-sec">
         <h3 class="section-title">Toasts and dialog</h3>
-        <p class="hint">Every floating message is a toast in one bottom-right stack, 3px edge by meaning. Every toast leaves after 6s; the line along its foot shows the time left and pauses on hover. A pending action (amber, e.g. "Additional Files Required") also leaves as soon as it is done. Never top-centre, never a bar inside the screen. Dialog: native &lt;dialog&gt;, blurred navy backdrop.</p>
-        <div class="toasts g-toasts">
-          <div class="toast ok"><svg class="i"><use href="#i-okc"/></svg><span><b>Saved.</b> Setup updated.</span><button class="toast-x" aria-label="Dismiss"><svg class="i"><use href="#i-x"/></svg></button></div>
-          <div class="toast warn"><svg class="i"><use href="#i-warn"/></svg><span><b>Additional Files Required</b><br>Upload the Priority 1 Pending Invoices and PaceJet BulkExport files.</span><button class="toast-x" aria-label="Dismiss"><svg class="i"><use href="#i-x"/></svg></button></div>
-          <div class="toast error"><svg class="i"><use href="#i-block"/></svg><span>Acumatica did not answer.</span><button class="toast-x" aria-label="Dismiss"><svg class="i"><use href="#i-x"/></svg></button></div>
+        <p class="hint">Every floating message is a toast in one stack (.toast-stack), bottom-right, top on phones. One card for all: 3px edge by meaning — info navy, .warn amber (wrong file, something still missing), .error red (hard failures only), .ok green. Every toast leaves after 6s; the line along its foot shows the time left and pauses on hover, focus or a hidden tab. A pending action ("Additional Files Required") also leaves as soon as it is done. Never top-centre, never a bar inside the screen. Dialog: native &lt;dialog&gt;, blurred navy backdrop, springy entrance.</p>
+        <div class="toast-stack g-toasts">
+          <div class="toast"><svg class="toast-icon"><use href="#i-info"/></svg><div class="toast-body"><div class="toast-title">Sync Started</div><div class="toast-detail">Acumatica is refreshing the inventory map.</div></div><button class="toast-x" aria-label="Dismiss"><svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button><i class="toast-timer" aria-hidden="true"></i></div>
+          <div class="toast ok"><svg class="toast-icon"><use href="#i-okc"/></svg><div class="toast-body"><div class="toast-title">Changes Saved</div><div class="toast-detail">Setup updated.</div></div><button class="toast-x" aria-label="Dismiss"><svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button><i class="toast-timer" aria-hidden="true"></i></div>
+          <div class="toast warn"><svg class="toast-icon"><use href="#i-warn"/></svg><div class="toast-body"><div class="toast-title">Additional Files Required</div><div class="toast-detail">Upload the Priority 1 Pending Invoices and PaceJet BulkExport files.</div></div><button class="toast-x" aria-label="Dismiss"><svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button><i class="toast-timer" aria-hidden="true"></i></div>
+          <div class="toast error"><svg class="toast-icon"><use href="#i-block"/></svg><div class="toast-body"><div class="toast-title">Acumatica Not Connected</div><div class="toast-detail">The OData endpoint timed out.</div></div><button class="toast-x" aria-label="Dismiss"><svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button><i class="toast-timer" aria-hidden="true"></i></div>
         </div>
         <div class="g-row" style="margin-top:14px">
           <button class="btn sec" id="open-dlg">Open dialog</button>
@@ -249,14 +255,17 @@
     </main>
     <footer class="foot"><div class="msg">Reference page. Copy <b style="color:var(--ink)">swcorp.css</b> into a new app; never edit tokens per app.</div><span class="grow"></span><a class="btn sec" href="CLAUDE.md">Read CLAUDE.md</a></footer>
   </div>
+  </div>
 </div>
+<a class="pop-out" href="guide.html" target="_blank" rel="noopener" aria-label="Open the guide in a new tab"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5L8 8"/><path d="M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/></svg></a>
 
 <dialog class="dialog" id="dlg">
   <h3>Stop processing?</h3>
   <p>The invoices read so far are kept. You can start again from the same files.</p>
   <div class="dialog-actions"><button class="btn sec" data-close>Keep going</button><button class="btn primary" data-close>Stop</button></div>
 </dialog>
-<div class="toasts" id="flash" aria-live="polite"></div>
+<div class="toast-stack" id="flash" aria-live="polite"></div>
+<div class="hover-tip" id="hover-tip" aria-hidden="true"></div>
 
 <script>
   // Side menu (same behaviour as the apps): circle out of the button, Esc /
@@ -289,14 +298,34 @@
     dlg.classList.add('closing');
     setTimeout(() => { dlg.classList.remove('closing'); dlg.close(); }, 140);
   });
+  // Toast: the timer line's animationend dismisses it; a hidden tab pauses it.
+  addEventListener('visibilitychange', () => document.documentElement.classList.toggle('tab-hidden', document.hidden));
   document.getElementById('open-toast').onclick = () => {
     const t = document.createElement('div');
     t.className = 'toast ok';
-    t.innerHTML = '<svg class="i"><use href="#i-okc"/></svg><span><b>Done.</b> 312 lines processed.</span>';
-    const bar = document.createElement('i'); bar.className = 'toast-timer'; t.append(bar);
-    bar.onanimationend = () => { t.classList.add('leaving'); setTimeout(() => t.remove(), 160); };
+    t.innerHTML = '<svg class="toast-icon"><use href="#i-okc"/></svg><div class="toast-body"><div class="toast-title">312 Lines Processed</div><div class="toast-detail">Ready to export.</div></div><button class="toast-x" aria-label="Dismiss"><svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button><i class="toast-timer" aria-hidden="true"></i>';
+    const leave = () => { t.classList.add('leaving'); setTimeout(() => t.remove(), 180); };
+    t.querySelector('.toast-timer').onanimationend = leave;
+    t.querySelector('.toast-x').onclick = leave;
     document.getElementById('flash').append(t);
   };
+  // Tucked search: opens on hover/focus, stays open with text, × empties and closes it.
+  const tuck = document.getElementById('g-tuck'), tuckIn = tuck.querySelector('input'), tuckX = tuck.querySelector('.search-x');
+  tuckIn.oninput = () => { tuck.classList.toggle('has-q', !!tuckIn.value); tuckX.hidden = !tuckIn.value; };
+  tuckIn.onkeydown = e => { if (e.key === 'Escape') { tuckIn.value = ''; tuckIn.oninput(); } };
+  tuckX.onclick = () => { tuckIn.value = ''; tuckIn.oninput(); tuck.classList.add('shut'); tuckIn.blur(); };
+  tuck.onpointerleave = () => tuck.classList.remove('shut');
+  // Hover tip: one card, by delegation, only when the cell is clipped.
+  const tip = document.getElementById('hover-tip'); let tipCell = null;
+  const showTip = el => { if (el.scrollWidth <= el.clientWidth + 1) return; tipCell = el; tip.textContent = el.dataset.tip; tip.classList.add('visible');
+    const b = el.getBoundingClientRect(), c = tip.getBoundingClientRect(); let top = b.top - c.height - 8; if (top < 8) top = b.bottom + 8;
+    tip.style.left = Math.max(8, Math.min(b.left, innerWidth - c.width - 8)) + 'px'; tip.style.top = top + 'px'; };
+  const hideTip = () => { tipCell = null; tip.classList.remove('visible'); };
+  document.addEventListener('mouseover', e => { const el = e.target.closest && e.target.closest('[data-tip]'); el ? showTip(el) : hideTip(); });
+  document.addEventListener('focusin', e => e.target.matches('[data-tip]') ? showTip(e.target) : hideTip());
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') hideTip(); });
+  // Tab scrolls the cell into view: a focused cell keeps its card, moved with it.
+  addEventListener('scroll', () => tipCell && tipCell === document.activeElement ? showTip(tipCell) : hideTip(), true);
 </script>
 </body>
 </html>

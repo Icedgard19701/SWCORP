@@ -1,18 +1,25 @@
-/* SWCorp app family — base stylesheet (v0, 2026-10-01).
-   Source of truth: Lowe's Invoice Reconciler (WebApp/static/css/app.css).
-   Load after swcorp-tokens.css; copy both into a new app's static/css/ and add
-   app-specific rules in a third file (app.css) loaded last. Do not edit tokens per app: if a value
-   must change, change it here and propagate to every app in the family.
-   Rules and the reasons behind them: CLAUDE.md in this folder. */
+/* SWCorp app family — base stylesheet (v1, 2026-10-02).
+   Shared by Freight Bill, Amazon Returns, ScanShip and Rebate Validation (same
+   class names: .app-frame, .header, .side-menu, .pop-out, .toast-stack), with
+   the page layout (.content/.main/.foot), forms, slots and tables from Lowe's
+   Invoice Reconciler. Load order: swcorp-tokens.css → swcorp.css → app.css
+   (app-specific rules only). Do not edit tokens or these rules per app: change
+   them here and propagate. Rules and the reasons behind them: CLAUDE.md. */
 
 /* ---------------------------------------------------------------- reset */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; }
+:root {
+  /* Safe area (notch, home bar): needs viewport-fit=cover in the meta viewport. */
+  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
+}
+html, body { height: 100dvh; }
 html { overflow: hidden; }
 body {
-  font: 14px/1.45 var(--font); color: var(--ink); background: var(--ground); font-optical-sizing: auto;
-  display: grid; place-items: center; padding: var(--gap); -webkit-font-smoothing: antialiased;
-  --gap: clamp(20px, 4vmin, 48px);
+  font: 14px/1.45 var(--font); color: var(--ink); background: var(--ground); font-optical-sizing: auto; -webkit-font-smoothing: antialiased;
+  display: flex; flex-direction: column; overflow: hidden;
+  padding: var(--sat) var(--sar) var(--sab) var(--sal);
+  -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%;
 }
 ::selection { background: var(--navy-100); color: var(--ink); }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
@@ -36,97 +43,100 @@ svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none;
 .skip:focus { top: 12px; }
 
 /* ---------------------------------------------------------------- window
-   Floating card over a neutral ground. Fills the viewport minus a gap that
-   scales with the screen, up to 1480×920. The height subtracts the gap, or a
-   short viewport cuts the card at the bottom. Too small for a card, or inside
-   an iframe (Acumatica, html.embedded): full-bleed, no radius, no shadow. */
-.window {
-  width: min(1480px, 100%); height: min(920px, calc(100dvh - 2 * var(--gap))); background: var(--surface);
-  border-radius: var(--r-window); display: flex; flex-direction: column; overflow: hidden; position: relative;
-  box-shadow: var(--shadow-window);
+   <body> > .app-frame (header, side menu, .app-body). Desktop (> 1180 × 720,
+   outside an iframe): a floating card centred on a white ground, filling the
+   viewport minus a gap that scales with the screen, up to 1480×920 (the
+   height subtracts the gap, or a short viewport cuts the card). Smaller, or
+   inside Acumatica (html.embedded): full-bleed, no radius, no shadow. The
+   frame must stretch to the full height there: body never centres it. */
+.app-frame { flex: 1; min-height: 0; width: 100%; position: relative; display: flex; flex-direction: column; background: var(--surface); }
+.app-body { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; background: var(--surface); }
+@media (min-width: 1181px) and (min-height: 721px) {
+  html:not(.embedded) body { --gap: clamp(20px, 4vmin, 48px); padding: var(--gap); align-items: center; justify-content: center; }
+  html:not(.embedded) .app-frame { width: min(1480px, 100%); height: min(920px, calc(100dvh - 2 * var(--gap))); flex: none;
+    border-radius: var(--r-window); overflow: hidden; box-shadow: var(--shadow-window); }
 }
-@media (max-width: 1180px), (max-height: 720px) {
-  body { padding: 0; }
-  .window { width: 100%; height: 100%; border-radius: 0; box-shadow: none; --hdr-r: 0; }
-}
-html.embedded body { padding: 0; background: var(--surface); }
-html.embedded .window { width: 100%; height: 100%; border-radius: 0; box-shadow: none; --hdr-r: 0; }
 
 /* ---------------------------------------------------------------- header
-   Navy bar: logo · divider · app name · (context chip) · grow · actions. */
-.hdr { border-radius: var(--hdr-r, var(--r-window)) var(--hdr-r, var(--r-window)) 0 0; background: var(--navy); color: #fff; display: flex; align-items: center; gap: 20px; padding: 0 24px; height: var(--h-hdr); flex: none; }
-.hdr :focus-visible { outline-color: #fff; }
-.hdr img { height: 26px; display: block; }
-.hdr .sep { width: 1px; height: 24px; background: rgba(255,255,255,.28); }
-.hdr h1 { font-size: 15px; font-weight: 600; letter-spacing: -.005em; color: #fff; }
-.hdr .grow { flex: 1; }
+   Navy 56px: .header-home (logo, goes to the app's main screen) · .header-sep ·
+   .header-title (app name) · (.run-chip) · .header-grow · .menu-toggle. The
+   right corner holds only the menu button. No z-index here: the menu button
+   stacks above the side menu, which covers this header when open. */
+.header { position: relative; flex: none; display: flex; align-items: center; gap: 20px; height: var(--h-hdr); padding: 0 24px; background: var(--navy); color: #fff; }
+.header :focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.header-home { flex: none; display: block; border-radius: 4px; transition: opacity .15s ease, transform var(--dur-press) var(--ease-out); }
+.header-home:active { transform: scale(.97); }
+@media (hover: hover) and (pointer: fine) { .header-home:hover { opacity: .85; } }
+.header-logo-img { height: 26px; width: auto; display: block; flex: none; }
+.header-sep { width: 1px; height: 24px; background: rgba(255,255,255,.28); flex: none; }
+.header-title { font-size: 15px; font-weight: 600; letter-spacing: -.005em; color: #fff; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.header-grow { flex: 1; }
 /* Inside Acumatica (html.embedded) its screen title names the app: logo + menu only. */
-html.embedded .hdr .sep, html.embedded .hdr h1 { display: none; }
+html.embedded .header-sep, html.embedded .header-title { display: none; }
 .run-chip { margin-left: 8px; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--r-ctl); background: rgba(255,255,255,.1); font-size: 13px; color: #fff; }
 .run-chip b { font-weight: 600; font-variant-numeric: tabular-nums; }
-.hbtn { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: var(--r-ctl); font-size: 13px; color: #fff; text-decoration: none; transition: background-color .15s ease; }
-.hbtn[aria-current] { background: rgba(255,255,255,.14); }
-@media (hover: hover) and (pointer: fine) { .hbtn:hover { background: rgba(255,255,255,.1); } }
 
 /* ---------------------------------------------------------------- side menu
-   motion.dev "variants" in CSS. The header's right corner holds only
-   .menu-toggle: three white lines, no disc at rest. .side-menu is a white
-   panel the full height of the window (over the header), clipped to a circle
-   of 0px centred on the button (JS measures --cx/--cy); opening grows it
-   until it fills the
-   panel (640ms drawer curve), the rows rise in 60ms apart, the top and bottom
-   lines bend into an X (CSS d) and the middle one fades. Closing: rows drop
-   at once, then the circle shrinks back into the disc (420ms, after 140ms).
-   JS sets --menu-r (button centre to the panel's far corner) and toggles
-   .open / body.menu-open / inert. The header must not set z-index (the
-   button stacks above the panel). Origin: Freight Bill Processor. */
-.menu-toggle { position: relative; z-index: 41; flex: none; display: grid; place-items: center; width: 36px; height: 36px; margin-right: -6px; border-radius: 50%; color: #fff;
+   motion.dev "variants" in CSS. .menu-toggle: three white lines, no disc at
+   rest. .side-menu is a white panel the full height of the window (over the
+   header), clipped to a circle of 0px centred on the button (JS measures
+   --cx/--cy and --menu-r); opening grows it until it fills the panel (640ms
+   drawer curve), the rows rise in 60ms apart, the top and bottom lines bend
+   into an X (CSS d) and the middle one fades. Closing: rows drop at once,
+   then the circle shrinks back (420ms, after 140ms). Picking an entry closes
+   it fast (body.menu-quick) while the new screen comes in. JS toggles
+   .open / body.menu-open / inert. Origin: Freight Bill Processor. */
+.menu-toggle { position: relative; z-index: 41; flex: none; display: grid; place-items: center; width: 36px; height: 36px; margin-right: -6px; border-radius: 50%; color: #fff; -webkit-tap-highlight-color: transparent;
   transition: transform var(--dur-press) var(--ease-out), color 160ms ease 460ms; }   /* navy until the circle has shrunk away */
-.menu-open .menu-toggle { color: var(--navy); transition: transform var(--dur-press) var(--ease-out), color 120ms ease; }
+body.menu-open .menu-toggle { color: var(--navy); transition: transform var(--dur-press) var(--ease-out), color 120ms ease; }
 .menu-toggle:active { transform: scale(.94); }
 .menu-toggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; overflow: visible; }
 .menu-toggle .l1 { d: path("M4 6.5 L20 6.5"); }
 .menu-toggle .l2 { d: path("M4 12 L20 12"); }
 .menu-toggle .l3 { d: path("M4 17.5 L20 17.5"); }
 .menu-toggle path { transition: d 320ms var(--ease-in-out), opacity 160ms ease; }
-.menu-open .menu-toggle .l1 { d: path("M6 18 L18 6"); }
-.menu-open .menu-toggle .l2 { opacity: 0; }
-.menu-open .menu-toggle .l3 { d: path("M6 6 L18 18"); }
+body.menu-open .menu-toggle .l1 { d: path("M6 18 L18 6"); }
+body.menu-open .menu-toggle .l2 { opacity: 0; }
+body.menu-open .menu-toggle .l3 { d: path("M6 6 L18 18"); }
+body.menu-open .menu-toggle path { transition: d 320ms var(--ease-in-out), opacity 120ms ease; }
 .menu-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
-.menu-open .menu-toggle:focus-visible { outline-color: var(--navy); }
-.side-menu { --cx: calc(100% - 36px); --cy: 28px; position: absolute; top: 0; right: 0; bottom: 0; z-index: 40; width: min(320px, 100%); padding: 76px 14px 20px; overflow-y: auto;
-  background: var(--surface); clip-path: circle(0px at var(--cx) var(--cy));
+body.menu-open .menu-toggle:focus-visible { outline-color: var(--navy); }
+.side-menu { --cx: calc(100% - 36px); --cy: 28px; position: absolute; top: 0; right: 0; bottom: 0; z-index: 40; width: min(320px, 100%); padding: 76px 14px 24px; overflow-y: auto;
+  display: flex; flex-direction: column; background: var(--surface); clip-path: circle(0px at var(--cx) var(--cy));
   transition: clip-path 420ms var(--ease-in-out) 140ms; }
 /* No shadow, and the scrim stops at the panel: anything translucent under the
    panel tints the window's rounded corner through the curve's soft edge. */
-.side-menu.open { clip-path: circle(var(--menu-r, 1200px) at var(--cx) var(--cy));
-  transition: clip-path 640ms cubic-bezier(.32, .72, 0, 1); }
+.side-menu.open { clip-path: circle(var(--menu-r, 1200px) at var(--cx) var(--cy)); transition: clip-path 640ms cubic-bezier(.32, .72, 0, 1); }
+body.menu-quick .side-menu { transition: clip-path 220ms var(--ease-out); }
+body.menu-quick .menu-anim { transition: opacity 80ms ease; transition-delay: 0ms; }
+body.menu-quick .menu-scrim { transition: opacity 160ms ease, visibility 0s linear 160ms; }
+body.menu-quick .menu-toggle { transition: transform var(--dur-press) var(--ease-out), color 120ms ease 120ms; }
 .menu-scrim { position: absolute; top: 0; left: 0; bottom: 0; right: min(320px, 100%); z-index: 39; background: rgba(21,46,69,.18); opacity: 0; visibility: hidden; transition: opacity 240ms ease, visibility 0s linear 240ms; }
 .menu-scrim.open { opacity: 1; visibility: visible; transition: opacity 240ms ease, visibility 0s; }
 .menu-anim { opacity: 0; transform: translateY(24px); transition: opacity 120ms ease, transform 160ms var(--ease-out); }
 .side-menu.open .menu-anim { opacity: 1; transform: none; transition: opacity 320ms var(--ease-out), transform 420ms var(--ease-out); transition-delay: calc(180ms + var(--i, 0) * 60ms); }
-/* Entries centred in the panel's free height; a single soft highlight glides
-   to the entry under the mouse (JS sets its translateY and height). */
-.side-menu { display: flex; flex-direction: column; }
+/* One list, entries centred in the panel's free height (views first, external
+   links after, with ↗); a single soft highlight glides to the entry under the
+   mouse (JS sets its translateY and height). */
 .menu-body { position: relative; margin: auto 0; }
 .menu-glide { position: absolute; left: 0; right: 0; top: 0; height: 0; border-radius: var(--r-box); background: var(--surface-2); opacity: 0; pointer-events: none;
   transition: transform 240ms var(--ease-out), opacity 160ms ease; }
 .menu-glide.on { opacity: 1; }
-.menu-label { position: relative; font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); margin: 0 10px 6px; }
 .menu-list { list-style: none; display: flex; flex-direction: column; gap: 2px; }
-.menu-list + .menu-label { margin-top: 18px; }
-.menu-item { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 10px; border-radius: var(--r-box); text-align: left; text-decoration: none; color: var(--ink);
+.menu-item { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 10px; border: 0; border-radius: var(--r-box); background: none;
+  font: inherit; text-align: left; text-decoration: none; color: var(--ink); cursor: pointer;
   transition: background-color .15s ease, transform var(--dur-press) var(--ease-out); }
 .menu-item:active { transform: scale(.98); }
 .menu-item:focus-visible { outline: 2px solid var(--navy); outline-offset: -2px; }
 /* Each entry shows its destination's own mark (app icon, SharePoint, ...),
    painted navy through a mask (one colour); the current view inverts it. */
 .menu-ic { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border: 1.5px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--navy);
-  transition: background-color .2s ease, border-color .2s ease, color .2s ease, transform 240ms var(--ease-out); }
+  transition: background-color .2s ease, border-color .2s ease, color .2s ease; }
 .menu-ic .i { width: 16px; height: 16px; }
 .menu-logo { width: 18px; height: 18px; background: currentColor; -webkit-mask: var(--logo) center / contain no-repeat; mask: var(--logo) center / contain no-repeat; }
 .menu-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; font-weight: 600; line-height: 1.3; }
 .menu-t small { font-size: 12px; font-weight: 400; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu-ext { flex: none; width: 14px; height: 14px; fill: none; stroke: var(--ink-3); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .menu-item[aria-current] { background: var(--navy-50); }
 .menu-item[aria-current] .menu-t { color: var(--navy); }
 .menu-item[aria-current] .menu-ic { background: var(--navy); border-color: var(--navy); color: #fff; }
@@ -134,19 +144,36 @@ html.embedded .hdr .sep, html.embedded .hdr h1 { display: none; }
   .menu-toggle:hover { transform: scale(1.06); }
   .menu-item:not([aria-current]):hover .menu-ic { border-color: var(--navy); }
 }
-@media (max-width: 599px) { .side-menu { width: 100%; } }
 /* Every layer at the window's rounded corner lets a little of the one below
    through its soft edge, so the header's navy tinted the corner under the
-   white panel. While the panel covers that corner the header pulls its own
-   corner in — switched only under the panel (100ms after opening, 370ms after
-   closing starts), so the window's outline never visibly changes. */
-.hdr { transition: border-top-right-radius 0s linear 370ms; }
-.menu-open .hdr { border-top-right-radius: calc(var(--hdr-r, var(--r-window)) + 12px); transition-delay: 100ms; }
+   white panel. While the panel covers that corner the header rounds its own
+   corner more — switched only under the panel (100ms after opening, 370ms into
+   closing; 90ms on a quick close), so the outline never visibly changes. */
+.header { transition: border-top-right-radius 0s linear 370ms; }
+body.menu-open .header { border-top-right-radius: 32px; transition-delay: 100ms; }
+body.menu-quick .header { transition: border-top-right-radius 0s linear 90ms; }
 @media (prefers-reduced-motion: reduce) {
-  .side-menu, .side-menu.open, .menu-toggle path { transition: none; }
+  .side-menu, .side-menu.open { transition: none; }
   .menu-anim, .side-menu.open .menu-anim { transform: none; transition: opacity 150ms ease; transition-delay: 0ms; }
+  .menu-toggle path, body.menu-open .menu-toggle path { transition: none; }
   .menu-toggle:hover { transform: none; }
+  .menu-glide { transition: opacity 150ms ease; }
 }
+
+/* ---------------------------------------------------------------- pop-out
+   Inside Acumatica only: a quiet round button bottom-right that opens the app
+   in its own tab (<a class="pop-out" target="_blank" rel="noopener"
+   aria-label="Open … in a new tab">). Nearly invisible at rest, full under
+   the pointer or keyboard focus; on touch it rests at .6. No tooltip. */
+.pop-out { display: none; }
+html.embedded .pop-out { position: fixed; right: 14px; bottom: 14px; z-index: 70; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--navy); color: #fff; box-shadow: 0 4px 14px rgba(21,46,69,.18); opacity: .22; transform: scale(.92);
+  transition: opacity .2s ease, transform var(--dur-press) var(--ease-out), box-shadow .2s ease; }
+html.embedded .pop-out svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+html.embedded .pop-out:hover, html.embedded .pop-out:focus-visible { opacity: 1; transform: none; box-shadow: 0 6px 18px rgba(21,46,69,.26); }
+html.embedded .pop-out:focus-visible { outline: 2px solid var(--navy); outline-offset: 3px; }
+html.embedded .pop-out:active { transform: scale(.94); }
+@media (hover: none) { html.embedded .pop-out { opacity: .6; transform: none; } }
 
 /* ---------------------------------------------------------------- body
    .content (skip target) > .main (scrolls) + .foot (pinned). Only one inner
@@ -389,33 +416,84 @@ table.grid tfoot td { background: var(--surface-2); border-top: 1px solid var(--
 .process-text { min-height: 22px; font-size: 15px; font-weight: 600; letter-spacing: .2px; color: rgba(255,255,255,.8); transition: opacity .3s; }
 
 /* ---------------------------------------------------------------- toasts
-   Bottom-right stack, newest at the bottom, white card + 3px left edge.
-   EVERY toast leaves after 6s (no sticky toasts). <i class="toast-timer">
-   along the foot empties over those 6s; its animationend is the timer, so
-   hover/focus pauses both. Re-showing restarts it (JS: armToast). */
-.toasts { position: fixed; right: 16px; bottom: 16px; z-index: var(--z-toast); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; max-width: min(420px, calc(100vw - 32px)); pointer-events: none; }
-.toast { pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; min-width: 280px; padding: 12px 12px 12px 14px; border-radius: var(--r-box); background: var(--surface);
-  border: 1px solid var(--line); border-left: 3px solid var(--navy); box-shadow: var(--shadow-pop); font-size: 13px; color: var(--ink);
-  position: relative; overflow: hidden; animation: toast-in var(--dur-toast) var(--ease-out); }
-/* Timers pause while the tab is hidden (JS toggles html.tab-hidden on visibilitychange). */
-html.tab-hidden .toast-timer { animation-play-state: paused; }
-.toast-timer { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--navy); opacity: .55; transform-origin: left center; animation: toast-timer 6s linear forwards; }
-.toast:hover > .toast-timer, .toast:focus-within > .toast-timer { animation-play-state: paused; }
-.toast.warn .toast-timer { background: var(--amber-stroke); }
-.toast.error .toast-timer { background: var(--block); }
-.toast.ok .toast-timer { background: var(--ok); }
-@keyframes toast-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
-.toast .i { margin-top: 1px; color: var(--navy); }
-.toast.error { border-left-color: var(--block); } .toast.error .i { color: var(--block); }
-.toast.warn { border-left-color: var(--amber); } .toast.warn .i { color: var(--amber-stroke); }
-.toast.ok { border-left-color: var(--ok); } .toast.ok .i { color: var(--ok); }
-.toast b { font-weight: 600; }
-.toast span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.toast-x { flex: none; display: grid; place-items: center; width: 24px; height: 24px; margin: -3px -4px 0 0; border-radius: 6px; color: var(--ink-3); transition: background-color .15s ease, color .15s ease; }
-.toast.leaving { animation: toast-out 160ms ease-out forwards; }
-@keyframes toast-in { from { opacity: 0; transform: translateY(calc(var(--toast-dy, 1) * 16px)) scale(.96); } }
-@keyframes toast-out { to { opacity: 0; transform: translateY(calc(var(--toast-dy, 1) * 10px)); } }
+   One stack per page, bottom-right, outside the card, newest at the bottom
+   (phones: top, under the header). Every toast is the same card: white, 3px
+   left edge carrying its meaning — navy info · .warn amber (wrong file,
+   something still missing) · .error red (hard failure only) · .ok green —
+   icon 16px, title 13/700 over a 12px line, × top-right, and a 2px line along
+   the foot that empties in 6s. That line's animationend IS the timer (no
+   sticky toasts); hover/focus pause it, and so does a hidden tab (JS toggles
+   html.tab-hidden on visibilitychange). Showing the same toast again restarts
+   it. When one leaves, the others slide to their place (FLIP, 240ms ease-out).
+   Markup: <div class="toast-stack" aria-live="polite"> <div class="toast warn">
+   <svg class="toast-icon"/><div class="toast-body"><div class="toast-title"/>
+   <div class="toast-detail"/></div><button class="toast-x"/>
+   <i class="toast-timer"/></div> */
+.toast-stack { position: fixed; right: 16px; bottom: calc(16px + var(--sab)); z-index: var(--z-toast); display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  max-width: min(420px, calc(100vw - 32px)); pointer-events: none; }
+.toast-stack > * { pointer-events: auto; }
+/* Inside Acumatica the stack rises above the pop-out bubble. */
+html.embedded .toast-stack { bottom: calc(14px + 32px + 10px); }
+.toast { position: relative; display: flex; align-items: flex-start; gap: 10px; min-width: 280px; padding: 12px 36px 14px 14px; border-radius: var(--r-box); overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--navy); box-shadow: var(--shadow-pop); color: var(--ink);
+  --edge: var(--navy); animation: toast-in var(--dur-toast) var(--ease-out); }
+.toast.warn { border-left-color: var(--amber); --edge: var(--amber-stroke); }
+.toast.error { border-left-color: var(--block); --edge: var(--block); }
+.toast.ok { border-left-color: var(--ok); --edge: var(--ok); }
+.toast.leaving { animation: toast-out var(--dur-exit) var(--ease-out) forwards; }
+.toast-icon { width: 16px; height: 16px; flex: none; margin-top: 1px; fill: none; stroke: var(--edge); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.toast-body { min-width: 0; flex: 1; }
+.toast-title { font-size: 13px; font-weight: 700; color: var(--ink); }
+.toast-detail { margin-top: 2px; font-size: 12px; line-height: 1.5; color: var(--ink-2); overflow-wrap: anywhere; }
+/* A summary: the title carries the figure ("351 Pending Invoices"), then name ↔ count. */
+.toast-list { list-style: none; margin-top: 4px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--ink-2); }
+.toast-list b { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+.toast-x { position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; color: var(--ink-3);
+  transition: background-color .15s ease, color .15s ease, transform var(--dur-press) var(--ease-out); }
+.toast-x:active { transform: scale(.95); }
+.toast-x svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 @media (hover: hover) and (pointer: fine) { .toast-x:hover { background: var(--surface-3); color: var(--ink); } }
+.toast-timer { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--edge); transform-origin: left center; animation: toast-timer 6s linear forwards; }
+.toast:hover > .toast-timer, .toast:focus-within > .toast-timer, html.tab-hidden .toast-timer { animation-play-state: paused; }
+@keyframes toast-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(calc(var(--toast-dy, 1) * 16px)) scale(.95); } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(calc(var(--toast-dy, 1) * 10px)); } }
+
+/* ---------------------------------------------------------------- hover tip
+   The family's one allowed tooltip (never title=""): the full value of a cell
+   cut off with "…", in the app's own card. Cells opt in with data-tip (full
+   text) and tabindex="0"; ONE card for the page, moved by delegation to the
+   cell under the pointer or with keyboard focus, shown only when the cell is
+   actually clipped (data-tip-always: the card carries information the cell
+   does not show). Esc, blur, scroll and resize hide it. pointer-events: none
+   so the card over the row never steals the pointer and closes itself. */
+.hover-tip { position: fixed; z-index: 120; left: 0; top: 0; max-width: 380px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-ctl);
+  box-shadow: var(--shadow-card); font-size: 12px; line-height: 1.5; color: var(--ink); text-align: left; white-space: normal; overflow-wrap: anywhere;
+  opacity: 0; visibility: hidden; transition: opacity .12s ease; pointer-events: none; }
+.hover-tip.visible { opacity: 1; visibility: visible; }
+/* Optional second line when the cell's click does something ("Click to copy this row"). */
+.hover-tip-hint { display: block; margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--surface-3); font-size: 11px; color: var(--ink-3); }
+[data-tip]:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* ---------------------------------------------------------------- completed
+   The rare celebration (origin ScanShip "Order Completed"): navy screen over
+   the card, logo, a ring that pops (from .9) with a check that draws, title
+   24/800, the reference under it, and how to go on. It leaves by itself
+   (ScanShip: 3s) or on a tap/key. role="status" aria-live="assertive". */
+.completed { position: absolute; inset: 0; z-index: var(--z-overlay); display: none; flex-direction: column; align-items: center; justify-content: center;
+  padding: 32px 24px max(32px, var(--sab)); text-align: center; background: var(--navy); color: #fff; cursor: pointer; }
+.completed.show { display: flex; animation: fade-in 200ms ease-out; }
+.completed-logo { height: 30px; width: auto; opacity: .9; margin-bottom: 40px; }
+.completed-ring { width: 108px; height: 108px; border-radius: 50%; background: rgba(255,255,255,.12); display: grid; place-items: center; margin-bottom: 28px; }
+.completed-dot { width: 78px; height: 78px; border-radius: 50%; background: #fff; display: grid; place-items: center; }
+.completed-dot svg { width: 38px; height: 38px; fill: none; stroke: var(--navy); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 24; stroke-dashoffset: 24; }
+.completed.show .completed-ring { animation: done-pop 420ms var(--ease-out) both; }
+.completed.show .completed-dot svg { animation: done-tick 320ms var(--ease-out) 220ms forwards; }
+.completed-title { font-size: 24px; font-weight: 800; letter-spacing: -.01em; margin-bottom: 6px; }
+.completed-ref { font-size: 15px; font-weight: 600; color: rgba(255,255,255,.65); font-variant-numeric: tabular-nums; }
+.completed-hint { margin-top: 28px; font-size: 12px; color: rgba(255,255,255,.5); }
+@keyframes done-pop { from { transform: scale(.9); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes done-tick { to { stroke-dashoffset: 0; } }
 
 /* ---------------------------------------------------------------- dialog
    Native <dialog>: 440px card, radius 14, blurred navy backdrop, springy
@@ -442,7 +520,7 @@ html.tab-hidden .toast-timer { animation-play-state: paused; }
 
 /* ---------------------------------------------------------------- responsive tiers
    Every family app works on all four tiers. Width tiers:
-     phone    < 600px        full-bleed, safe-area, icon-only header actions,
+     phone    < 600px        full-bleed, safe-area, header logo 22 / title 14,
                              16px gutters, 16px inputs (no iOS zoom), pills 2/row
      compact  600–1180px     full-bleed (also any height ≤ 720px or iframe),
                              24px gutters
@@ -451,13 +529,11 @@ html.tab-hidden .toast-timer { animation-play-state: paused; }
    and tighter blocks. Scale with clamp() inside a tier, never per-pixel queries. */
 @media (max-width: 1180px) and (min-height: 821px) { .main { padding: 24px 24px 0; } .foot { padding: 14px 24px; } }
 @media (max-width: 599px) {
-  body { padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0); -webkit-tap-highlight-color: transparent; }
-  .hdr { gap: 12px; padding: 0 16px; }
-  .hdr img { height: 22px; }
-  .hdr h1 { font-size: 14px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .header { gap: 12px; padding: 0 16px; }
+  .header-logo-img { height: 22px; }
+  .header-title { font-size: 14px; }
+  .side-menu { width: 100%; }
   .run-chip { display: none; }
-  .hbtn { width: 36px; height: 36px; padding: 0; justify-content: center; font-size: 0; gap: 0; }
-  .hbtn .i { width: 18px; height: 18px; }
   .main { padding: 20px 16px 0; }
   .titlebar h2 { font-size: 18px; }
   .foot { padding: 12px 16px; gap: 10px; }
@@ -470,9 +546,9 @@ html.tab-hidden .toast-timer { animation-play-state: paused; }
   .slot { min-height: 56px; padding: 10px 12px; gap: 10px; }
   .tiles { grid-template-columns: 1fr; }
   /* Phones: toasts at the top, under the header, entering from above. */
-  .toasts { left: 12px; right: 12px; top: calc(var(--h-hdr) + 8px + env(safe-area-inset-top, 0)); bottom: auto; max-width: none; align-items: stretch; }
-  .toast { --toast-dy: -1; }
-  .toast { min-width: 0; }
+  .toast-stack { left: 12px; right: 12px; top: calc(var(--h-hdr) + 8px + var(--sat)); bottom: auto; max-width: none; align-items: stretch; }
+  html.embedded .toast-stack { bottom: auto; }
+  .toast { --toast-dy: -1; min-width: 0; }
   .dialog { width: calc(100% - 24px); }
 }
 
@@ -481,5 +557,7 @@ html.tab-hidden .toast-timer { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
   .toast { animation-name: fade-in; } .toast.leaving { animation-name: fade-out; }
   .dialog[open] { animation-name: fade-in; } .dialog.closing { animation-name: fade-out; }
+  .completed.show .completed-ring { animation: none; } .completed.show .completed-dot svg { animation: none; stroke-dashoffset: 0; }
+  .hover-tip { transition: none; }
   .btn:active, .cbx input:active { transform: none !important; }
 }
